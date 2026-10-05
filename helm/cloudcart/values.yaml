@@ -160,5 +160,7 @@ smokeTest:
 # In-cluster PostgreSQL for local clusters only. Never enable on EKS.
 postgres:
   enabled: false
+  # 0 = database outage drill (docs/incidents/05-database-connection-failure.md)
+  replicas: 1
   image: postgres:16-alpine
   storage: 1Gi

@@ -12,7 +12,7 @@ metadata:
     app.kubernetes.io/part-of: cloudcart
 spec:
   serviceName: postgres
-  replicas: 1
+  replicas: {{ .Values.postgres.replicas }}
   selector:
     matchLabels:
       app.kubernetes.io/name: postgres
