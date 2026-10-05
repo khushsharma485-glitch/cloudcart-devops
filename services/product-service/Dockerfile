@@ -41,10 +41,14 @@ COPY --from=extract --chown=app:app /extract/layers/application/ ./
 
 USER 10001:10001
 
+# Heap = 65% of the container memory limit; the rest is for metaspace,
+# thread stacks, code cache and direct buffers. At 75% the JVM outgrew a
+# 512Mi limit and was OOMKilled by the kernel (exit 137, no log line) before
+# it could raise OutOfMemoryError (docs/incidents/03-high-memory.md).
 ENV SERVER_PORT=8080 \
     APP_VERSION=${APP_VERSION} \
     LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs \
-    JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError -Djava.io.tmpdir=/tmp"
+    JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=65 -XX:+ExitOnOutOfMemoryError -Djava.io.tmpdir=/tmp"
 
 EXPOSE 8080
 
