@@ -30,6 +30,7 @@ grafana:
       jsonData:
         maxLines: 1000
 
+  # 384Mi was OOMKilled while rendering the 26-panel CloudCart dashboard.
   resources:
-    requests: { cpu: 50m, memory: 128Mi }
-    limits: { memory: 384Mi }
+    requests: { cpu: 50m, memory: 256Mi }
+    limits: { memory: 768Mi }
