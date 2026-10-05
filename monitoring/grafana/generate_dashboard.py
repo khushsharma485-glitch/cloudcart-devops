@@ -36,8 +36,8 @@ def panel(title, kind, targets, x, y, w, h, unit=None, **extra):
         if k == "thresholds":
             p["fieldConfig"]["defaults"]["thresholds"] = {"mode": "absolute", "steps": v}
             p["fieldConfig"]["defaults"]["color"] = {"mode": "thresholds"}
-        elif k == "decimals":
-            p["fieldConfig"]["defaults"]["decimals"] = v
+        elif k in ("decimals", "min", "max"):
+            p["fieldConfig"]["defaults"][k] = v
         else:
             p[k] = v
     panels.append(p)
@@ -88,7 +88,7 @@ panel("Request rate by service", "timeseries",
 panel("Error rate by service (5xx ratio)", "timeseries",
       [q(f'(sum by (job) (rate(http_server_requests_seconds_count{{{HTTP}, status=~"5.."}}[2m])) or (sum by (job) (rate(http_server_requests_seconds_count{{{HTTP}}}[2m])) * 0))'
          f' / clamp_min(sum by (job) (rate(http_server_requests_seconds_count{{{HTTP}}}[2m])), 0.0001)', "{{job}}")],
-      8, 6, 8, 8, unit="percentunit")
+      8, 6, 8, 8, unit="percentunit", min=0, max=1)
 panel("Latency p50 / p95 / p99", "timeseries",
       [q(f'histogram_quantile(0.50, sum by (le) (rate(http_server_requests_seconds_bucket{{{HTTP}}}[2m])))', "p50"),
        q(f'histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{{{HTTP}}}[2m])))', "p95"),
@@ -117,7 +117,7 @@ panel("Replicas (HPA current / desired)", "timeseries",
        q(f'kube_horizontalpodautoscaler_status_desired_replicas{{{NS}}}', "{{horizontalpodautoscaler}} desired")],
       16, 22, 8, 8, unit="short")
 panel("Container restarts (1h)", "timeseries",
-      [q(f'sum by (pod) (increase(kube_pod_container_status_restarts_total{{{NS}}}[1h]))', "{{pod}}")],
+      [q(f'sum by (pod) (increase(kube_pod_container_status_restarts_total{{{NS}, container="app"}}[1h]))', "{{pod}}")],
       0, 30, 8, 7, unit="short")
 panel("DB connection pool (active / pending)", "timeseries",
       [q(f'sum by (job) (hikaricp_connections_active{{{NS}, {APP}}})', "{{job}} active"),
@@ -143,7 +143,8 @@ panel("GC pause time", "timeseries",
 row("Logs (Loki)", 46)
 panel("Errors and warnings", "logs",
       [{"expr": '{namespace="$namespace", app=~"$service", level=~"ERROR|WARN"}', "datasource": LOKI}],
-      0, 47, 24, 10, options={"showTime": True, "wrapLogMessage": True, "sortOrder": "Descending"})
+      0, 47, 24, 10, options={"showTime": True, "wrapLogMessage": False, "prettifyLogMessage": False,
+               "enableLogDetails": True, "sortOrder": "Descending"})
 
 dashboard = {
     "uid": "cloudcart-overview",
