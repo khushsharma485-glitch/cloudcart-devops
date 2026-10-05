@@ -59,6 +59,7 @@ networkPolicy:
 
 postgres:
   enabled: true
+  replicas: 0 # GAME DAY: database outage drill - revert this commit to end it
 
 blueGreen:
   # Short deadline so failed-deployment drills finish quickly.
