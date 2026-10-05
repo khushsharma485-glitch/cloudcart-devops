@@ -7,6 +7,10 @@ configs:
   params:
     # TLS is terminated at the ingress / port-forward in this setup.
     server.insecure: true
+    # Applications sync with ServerSideApply, so compare with server-side
+    # diff too. The legacy client-side diff misreads fields co-owned by other
+    # controllers (Argo Rollouts, HPA) and reports permanent false drift.
+    controller.diff.server.side: "true"
   cm:
     # Poll Git every 60s (a GitHub webhook can make this instant).
     timeout.reconciliation: 60s
