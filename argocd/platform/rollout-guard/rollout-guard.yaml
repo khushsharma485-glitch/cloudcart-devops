@@ -95,11 +95,14 @@ spec:
   schedule: "* * * * *"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 1
-  failedJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
   jobTemplate:
     spec:
       backoffLimit: 0
-      activeDeadlineSeconds: 50
+      # Generous: the first run on a node includes pulling the kubectl image.
+      # concurrencyPolicy Forbid skips a tick rather than overlapping runs.
+      activeDeadlineSeconds: 120
+      ttlSecondsAfterFinished: 900
       template:
         spec:
           serviceAccountName: rollout-guard
