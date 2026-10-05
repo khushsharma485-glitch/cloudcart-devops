@@ -18,7 +18,7 @@ Terraform 1.16.5 (container), Trivy 0.75, 2026-10-05/06.
 | Compose stack | `tests/smoke/smoke-test.sh`: 16/16 checks (create/read/update/delete, order flow across services, 400/422 paths) |
 | CI workflow syntax | actionlint (with shellcheck) clean on all 4 workflows; hadolint clean on 4 Dockerfiles |
 | Terraform | `fmt -check`, `validate` (dev, prod, bootstrap); **7 `terraform test` runs with a mocked AWS provider** (VPC/NAT layout per environment, shared ECR, RDS hardening, API endpoint guard rails); Trivy misconfiguration scan clean apart from one documented accepted risk |
-| Kubernetes manifests | kubeconform strict, Kubernetes 1.36 + CRD schemas: 229 resources (plain manifests, Helm for local/dev/prod, Argo CD apps, monitoring config) |
+| Kubernetes manifests | kubeconform strict, Kubernetes 1.36 + CRD schemas: 232 resources (plain manifests, Helm for local/dev/prod, Argo CD apps, monitoring config) |
 | Plain manifests on a cluster | deployed to kind, smoke test through the Traefik ingress |
 | NetworkPolicies enforced | `tests/network-policy/netpol-test.sh` 9/9 on Calico |
 | GitOps | Argo CD app-of-apps syncs 8 Applications from Git; self-heal restored a deleted NetworkPolicy and an edited ConfigMap in 7 s |
