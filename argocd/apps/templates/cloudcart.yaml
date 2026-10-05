@@ -49,7 +49,6 @@ spec:
     - group: argoproj.io
       kind: Rollout
       jsonPointers: [/spec/replicas]
-      managedFieldsManagers: [rollouts-controller]
     # Argo Rollouts points the active/preview Services at ReplicaSets by
     # editing their selectors during a blue-green switch. That is expected.
     - group: ""
