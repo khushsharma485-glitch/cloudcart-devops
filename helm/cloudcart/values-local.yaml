@@ -30,7 +30,10 @@ serviceDefaults:
       memory: 512Mi
   autoscaling:
     minReplicas: 1
-    maxReplicas: 4
+    # Capped at 2 locally: an HPA at 4 plus a blue-green preview at 4 meant
+    # 8 JVMs on one 8 GB Docker VM, which exhausted node memory and took a
+    # kind node NotReady (docs/incidents/07-node-failure.md).
+    maxReplicas: 2
   pdb:
     minAvailable: 0
 

@@ -45,10 +45,9 @@ server:
   resources:
     requests: { cpu: 50m, memory: 64Mi }
     limits: { memory: 256Mi }
+# ApplicationSets are not used (app-of-apps is), so do not run the controller.
 applicationSet:
-  resources:
-    requests: { cpu: 10m, memory: 64Mi }
-    limits: { memory: 128Mi }
+  replicas: 0
 notifications:
   enabled: false
 redis:
