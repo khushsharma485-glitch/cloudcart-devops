@@ -1,0 +1,135 @@
+# Rollout guard: automatic rollback for blue-green updates that never get healthy.
+#
+# Why this exists: Argo Rollouts v1.10 evaluates progressDeadlineSeconds for
+# blue-green only after the preview ReplicaSet becomes available. A green
+# version that crash-loops or never passes readiness is therefore never
+# aborted on its own. (Observed in the failed-deployment drill and traced to
+# rollout/sync.go: the condition calculation is not reached while the
+# preview waits.) Blue keeps serving, but nothing rolls back.
+#
+# Every minute this job finds Rollouts whose preview ReplicaSet has been
+# unready for longer than the Rollout's own progressDeadlineSeconds, and
+# aborts them, exactly like `kubectl argo rollouts abort`. The preview is
+# scaled down and the Rollout goes Degraded, which Argo CD and Alertmanager
+# surface. The fix is then a `git revert` of the bad release.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: rollout-guard
+  namespace: argo-rollouts
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: rollout-guard
+rules:
+  - apiGroups: [argoproj.io]
+    resources: [rollouts]
+    verbs: [get, list]
+  - apiGroups: [argoproj.io]
+    resources: [rollouts/status]
+    verbs: [patch]
+  - apiGroups: [apps]
+    resources: [replicasets]
+    verbs: [get, list]
+  - apiGroups: [""]
+    resources: [events]
+    verbs: [create]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: rollout-guard
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: rollout-guard
+subjects:
+  - kind: ServiceAccount
+    name: rollout-guard
+    namespace: argo-rollouts
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rollout-guard
+  namespace: argo-rollouts
+data:
+  guard.sh: |
+    #!/bin/sh
+    # Abort blue-green Rollouts whose preview never became ready in time.
+    set -eu
+    now=$(date -u +%s)
+    kubectl get rollouts -A -l app.kubernetes.io/part-of=cloudcart -o json | jq -c '
+      .items[]
+      | select(.spec.strategy.blueGreen != null)
+      | select((.status.abort // false) | not)
+      | select(.status.blueGreen.previewSelector != null)
+      | select(.status.blueGreen.previewSelector != .status.stableRS)
+      | {ns: .metadata.namespace, name: .metadata.name,
+         preview: .status.blueGreen.previewSelector,
+         deadline: (.spec.progressDeadlineSeconds // 600)}' |
+    while read -r r; do
+      ns=$(echo "$r" | jq -r .ns); name=$(echo "$r" | jq -r .name)
+      hash=$(echo "$r" | jq -r .preview); deadline=$(echo "$r" | jq -r .deadline)
+      rs=$(kubectl -n "$ns" get rs -l "rollouts-pod-template-hash=$hash" -o json | jq -c '.items[0] // empty')
+      [ -n "$rs" ] || continue
+      created=$(echo "$rs" | jq -r '.metadata.creationTimestamp | fromdateiso8601')
+      want=$(echo "$rs" | jq -r '.spec.replicas // 0')
+      ready=$(echo "$rs" | jq -r '.status.readyReplicas // 0')
+      age=$((now - created))
+      if [ "$ready" -lt "$want" ] && [ "$age" -gt "$deadline" ]; then
+        echo "ABORT $ns/$name: preview $hash ready $ready/$want after ${age}s (deadline ${deadline}s)"
+        kubectl -n "$ns" patch rollout "$name" --subresource=status --type merge -p '{"status":{"abort":true}}'
+      else
+        echo "ok    $ns/$name: preview $hash ready $ready/$want, age ${age}s of ${deadline}s"
+      fi
+    done
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: rollout-guard
+  namespace: argo-rollouts
+spec:
+  schedule: "* * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 50
+      template:
+        spec:
+          serviceAccountName: rollout-guard
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: guard
+              image: alpine/k8s:1.36.5
+              command: ["/bin/sh", "/scripts/guard.sh"]
+              env:
+                - name: HOME # kubectl cache; the root filesystem is read-only
+                  value: /tmp
+              resources:
+                requests: { cpu: 10m, memory: 32Mi }
+                limits: { memory: 128Mi }
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - { name: scripts, mountPath: /scripts }
+                - { name: tmp, mountPath: /tmp }
+          volumes:
+            - name: scripts
+              configMap:
+                name: rollout-guard
+            - name: tmp
+              emptyDir: {}

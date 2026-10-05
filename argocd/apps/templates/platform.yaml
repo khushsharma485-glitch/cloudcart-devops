@@ -29,6 +29,26 @@ spec:
             requests: { cpu: 50m, memory: 64Mi }
             limits: { memory: 256Mi }
   {{- include "apps.syncPolicy" . | nindent 2 }}
+---
+# Aborts blue-green updates whose preview never becomes ready
+# (argocd/platform/rollout-guard explains why this is needed).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: rollout-guard
+  {{- include "apps.meta" . | nindent 2 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  project: {{ .Values.project }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argo-rollouts
+  source:
+    repoURL: {{ .Values.repoURL }}
+    targetRevision: {{ .Values.targetRevision }}
+    path: argocd/platform/rollout-guard
+  {{- include "apps.syncPolicy" . | nindent 2 }}
 {{- end }}
 
 {{- if $a.monitoring.enabled }}
