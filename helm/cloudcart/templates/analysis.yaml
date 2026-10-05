@@ -15,7 +15,11 @@ metadata:
 spec:
   args:
     - name: service-url
+    - name: method
     - name: api-path
+    - name: body
+      value: ""
+    - name: expect
   metrics:
     - name: smoke-test
       count: 1
@@ -51,10 +55,16 @@ spec:
                           [ "$i" = 12 ] && { echo "green never became ready"; exit 1; }
                           sleep 5
                         done
-                        echo; echo "api: $url{{ "{{args.api-path}}" }}"
-                        code=$(curl -s -o /dev/null -w '%{http_code}' -m 5 "$url{{ "{{args.api-path}}" }}")
-                        echo "HTTP $code"
-                        [ "$code" = 200 ]
+                        method="{{ "{{args.method}}" }}"; path="{{ "{{args.api-path}}" }}"
+                        body='{{ "{{args.body}}" }}'; expect="{{ "{{args.expect}}" }}"
+                        echo; echo "check: $method $url$path (expect HTTP $expect)"
+                        if [ -n "$body" ]; then
+                          code=$(curl -s -o /tmp/body -w '%{http_code}' -m 10 -X "$method" -H 'Content-Type: application/json' -d "$body" "$url$path")
+                        else
+                          code=$(curl -s -o /tmp/body -w '%{http_code}' -m 10 -X "$method" "$url$path")
+                        fi
+                        echo "HTTP $code: $(head -c 300 /tmp/body)"
+                        [ "$code" = "$expect" ]
                     resources:
                       requests: { cpu: 10m, memory: 16Mi }
                       limits: { cpu: 100m, memory: 64Mi }
@@ -63,6 +73,12 @@ spec:
                       readOnlyRootFilesystem: true
                       capabilities:
                         drop: ["ALL"]
+                    volumeMounts:
+                      - name: tmp
+                        mountPath: /tmp
+                volumes:
+                  - name: tmp
+                    emptyDir: {}
 {{- if .Values.monitoring.serviceMonitor.enabled }}
 ---
 # Post-promotion gate: after GREEN takes live traffic, watch its 5xx ratio

@@ -52,8 +52,14 @@ spec:
         args:
           - name: service-url
             value: http://{{ $name }}-preview.{{ $.Release.Namespace }}.svc
+          - name: method
+            value: {{ $svc.smoke.method }}
           - name: api-path
-            value: {{ $svc.smokePath }}
+            value: {{ $svc.smoke.path }}
+          - name: body
+            value: {{ default "" $svc.smoke.body | quote }}
+          - name: expect
+            value: {{ $svc.smoke.expect | quote }}
       {{- if $.Values.monitoring.serviceMonitor.enabled }}
       postPromotionAnalysis:
         templates:

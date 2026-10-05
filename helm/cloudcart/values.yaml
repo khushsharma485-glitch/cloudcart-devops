@@ -21,6 +21,9 @@ config:
   dbSslMode: require
   dbPoolSize: "10"
   logLevel: INFO
+  # Where order-service finds its dependencies (cluster DNS names).
+  userServiceUrl: http://user-service
+  productServiceUrl: http://product-service
   # Fault-injection endpoints for incident drills (order-service).
   chaosEnabled: false
 
@@ -76,20 +79,29 @@ serviceDefaults:
   extraEnv: {}
 
 services:
-  # path      = Ingress route prefix
-  # smokePath = GET endpoint the blue-green pre-promotion test expects 200 from
+  # path  = Ingress route prefix
+  # smoke = request the blue-green pre-promotion test sends to the GREEN
+  #         pods, and the status it must get back
   user-service:
     enabled: true
     path: /api/users
-    smokePath: /api/users
+    smoke: { method: GET, path: /api/users, expect: "200" }
   product-service:
     enabled: true
     path: /api/products
-    smokePath: /api/products
+    smoke: { method: GET, path: /api/products, expect: "200" }
   order-service:
     enabled: true
     path: /api/orders
-    smokePath: /api/orders/user/0
+    # An order for a user that cannot exist: order-service must call
+    # user-service and translate its 404 into 422. This proves the
+    # service-to-service path works (wrong URL, DNS, network policy -> 503)
+    # without creating any data.
+    smoke:
+      method: POST
+      path: /api/orders
+      body: '{"userId":999999999,"productId":1,"quantity":1}'
+      expect: "422"
     # order-service calls the other two; network policies open that path.
     callsCatalog: true
 

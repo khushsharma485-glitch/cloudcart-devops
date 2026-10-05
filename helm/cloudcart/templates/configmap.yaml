@@ -10,7 +10,7 @@ data:
   DB_NAME: {{ .Values.config.dbName | quote }}
   DB_SSL_MODE: {{ .Values.config.dbSslMode | quote }}
   DB_POOL_SIZE: {{ .Values.config.dbPoolSize | quote }}
-  USER_SERVICE_URL: "http://user-service"
-  PRODUCT_SERVICE_URL: "http://product-service"
+  USER_SERVICE_URL: {{ .Values.config.userServiceUrl | quote }}
+  PRODUCT_SERVICE_URL: {{ .Values.config.productServiceUrl | quote }}
   APP_LOG_LEVEL: {{ .Values.config.logLevel | quote }}
   CHAOS_ENABLED: {{ .Values.config.chaosEnabled | quote }}
