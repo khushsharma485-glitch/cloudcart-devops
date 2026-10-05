@@ -69,6 +69,8 @@ addons() {
     --version "$METRICS_SERVER_CHART" -n kube-system \
     --set 'args={--kubelet-insecure-tls}' --wait
 
+  # ingressendpoint.ip publishes an address in the Ingress status (like the
+  # ALB hostname on EKS) so Argo CD can report the Ingress as Healthy.
   log "Traefik ingress controller (stands in for the AWS Load Balancer Controller)"
   helm upgrade --install traefik traefik/traefik \
     --version "$TRAEFIK_CHART" -n traefik --create-namespace \
@@ -79,6 +81,8 @@ addons() {
     --set 'tolerations[0].effect=NoSchedule' \
     --set ingressClass.enabled=true \
     --set ingressClass.isDefaultClass=false \
+    --set providers.kubernetesIngress.publishedService.enabled=false \
+    --set 'additionalArguments={--providers.kubernetesingress.ingressendpoint.ip=127.0.0.1}' \
     --wait
 }
 

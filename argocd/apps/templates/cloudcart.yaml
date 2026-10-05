@@ -40,12 +40,26 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
-  # HPA owns the replica count; never fight it.
+      - RespectIgnoreDifferences=true
   ignoreDifferences:
+    # The HPA owns the replica count; never fight it.
     - group: apps
       kind: Deployment
       jsonPointers: [/spec/replicas]
     - group: argoproj.io
       kind: Rollout
       jsonPointers: [/spec/replicas]
+      managedFieldsManagers: [rollouts-controller]
+    # Argo Rollouts points the active/preview Services at ReplicaSets by
+    # editing their selectors during a blue-green switch. That is expected.
+    - group: ""
+      kind: Service
+      managedFieldsManagers: [rollouts-controller]
+    # The API server adds defaults inside volumeClaimTemplates.
+    - group: apps
+      kind: StatefulSet
+      jqPathExpressions:
+        - .spec.volumeClaimTemplates[]?.apiVersion
+        - .spec.volumeClaimTemplates[]?.kind
+        - .spec.volumeClaimTemplates[]?.status
 {{- end }}
