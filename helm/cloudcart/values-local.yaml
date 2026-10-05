@@ -38,6 +38,13 @@ serviceDefaults:
     minAvailable: 0
 
 services:
+  # Production-like redundancy for one service so pod-kill and node-drain
+  # drills can show zero-downtime behaviour (2 replicas + PDB).
+  user-service:
+    autoscaling:
+      minReplicas: 2
+    pdb:
+      minAvailable: 1
   order-service:
     strategy: blueGreen
     image:
