@@ -63,7 +63,7 @@ panel("Availability", "stat",
       thresholds=[{"color": RED, "value": None}, {"color": AMBER, "value": 0.9}, {"color": GREEN, "value": 0.99}])
 panel("Requests / min", "stat",
       [q(f'sum(rate(http_server_requests_seconds_count{{{HTTP}}}[5m])) * 60')], 4, 1, 4, 4,
-      unit="short", decimals=0)
+      unit="short", decimals=0, thresholds=[{"color": "blue", "value": None}])
 panel("Error rate (5xx)", "stat",
       [q(f'(sum(rate(http_server_requests_seconds_count{{{HTTP}, status=~"5.."}}[5m])) or vector(0))'
          f' / clamp_min(sum(rate(http_server_requests_seconds_count{{{HTTP}}}[5m])), 0.0001)')],
@@ -75,7 +75,7 @@ panel("P95 latency", "stat",
       thresholds=[{"color": GREEN, "value": None}, {"color": AMBER, "value": 0.25}, {"color": RED, "value": 0.5}])
 panel("Pods ready", "stat",
       [q(f'sum(kube_pod_status_ready{{{NS}, condition="true", pod=~"(user|product|order)-service.*"}})')],
-      16, 1, 4, 4, unit="short")
+      16, 1, 4, 4, unit="short", thresholds=[{"color": RED, "value": None}, {"color": GREEN, "value": 1}])
 panel("Firing alerts", "stat",
       [q(f'count(ALERTS{{alertstate="firing", {NS}}}) or vector(0)')], 20, 1, 4, 4, unit="short",
       thresholds=[{"color": GREEN, "value": None}, {"color": RED, "value": 1}])
