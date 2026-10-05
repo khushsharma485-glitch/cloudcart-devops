@@ -138,7 +138,7 @@ git_server() {
   if docker ps --format '{{.Names}}' | grep -qx "$GIT_SERVER"; then return; fi
   docker rm -f "$GIT_SERVER" >/dev/null 2>&1 || true
   log "starting Git server container '$GIT_SERVER' on the kind network"
-  MSYS_NO_PATHCONV=1 docker run -d --name "$GIT_SERVER" --network kind --restart unless-stopped     -v "$(host_path "$GIT_MIRROR_DIR"):/srv/git:ro" --entrypoint git alpine/git:v2.54.0     daemon --reuseaddr --base-path=/srv/git --export-all --verbose /srv/git >/dev/null
+  MSYS_NO_PATHCONV=1 docker run -d --name "$GIT_SERVER" --network kind --restart unless-stopped     -v "$(host_path "$GIT_MIRROR_DIR"):/srv/git:ro" alpine:3.22     sh -c 'apk add --no-cache git-daemon >/dev/null && exec git daemon --reuseaddr --base-path=/srv/git --export-all --verbose /srv/git' >/dev/null
 }
 
 gitops() {
