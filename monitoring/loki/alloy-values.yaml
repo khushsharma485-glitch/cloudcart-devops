@@ -51,7 +51,8 @@ alloy:
           selector = "{namespace=\"cloudcart\"}"
 
           stage.json {
-            expressions = { level = "\"log.level\"", logger = "\"log.logger\"" }
+            // ECS nests the level: {"log": {"level": "INFO"}} -> JMESPath log.level
+            expressions = { level = "log.level", logger = "log.logger" }
           }
           stage.labels {
             values = { level = "" }
