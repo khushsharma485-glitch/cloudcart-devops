@@ -47,3 +47,6 @@ Thumbs.db
 
 # Account-specific backend settings
 backend.hcl
+
+# Local GitOps mirror (scripts/local-cluster)
+.local/
