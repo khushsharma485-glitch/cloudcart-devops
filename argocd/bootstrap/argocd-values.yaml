@@ -11,6 +11,11 @@ configs:
     # diff too. The legacy client-side diff misreads fields co-owned by other
     # controllers (Argo Rollouts, HPA) and reports permanent false drift.
     controller.diff.server.side: "true"
+    # A sync waits for every resource to be Healthy before PostSync hooks
+    # run. If the change itself breaks health (e.g. the database is gone),
+    # that sync never ends and blocks the fix (a `git revert` cannot sync).
+    # Cut such syncs off after 10 minutes (docs/incidents/05-*.md).
+    controller.sync.timeout.seconds: "600"
   cm:
     # Poll Git every 60s (a GitHub webhook can make this instant).
     timeout.reconciliation: 60s
