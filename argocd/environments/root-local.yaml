@@ -14,7 +14,7 @@ spec:
     server: https://kubernetes.default.svc
     namespace: argocd
   source:
-    repoURL: http://cloudcart-git/cloudcart-devops.git
+    repoURL: git://cloudcart-git/cloudcart-devops.git
     targetRevision: main
     path: argocd/apps
     helm:

@@ -23,9 +23,11 @@ TRAEFIK_CHART=41.6.1
 CALICO_VERSION=v3.33.0
 ARGOCD_CHART=10.9.6
 
-# Local stand-in for GitHub: a bare clone served over HTTP (git "dumb HTTP")
-# by nginx on the kind Docker network. Argo CD reads
-# http://cloudcart-git/cloudcart-devops.git exactly as it would read GitHub.
+# Local stand-in for GitHub: a bare clone served by `git daemon` (git://)
+# on the kind Docker network. Argo CD reads
+# git://cloudcart-git/cloudcart-devops.git exactly as it would read GitHub.
+# (Argo CD uses go-git, which does not support git's "dumb HTTP", so a
+# static web server is not enough.)
 GIT_MIRROR_DIR="$ROOT/.local/gitops"
 GIT_MIRROR_REPO="$GIT_MIRROR_DIR/cloudcart-devops.git"
 GIT_SERVER=cloudcart-git
@@ -130,15 +132,13 @@ git_push_mirror() {
   fi
   log "pushing $(git -C "$ROOT" rev-parse --short HEAD) ($(git -C "$ROOT" branch --show-current)) to the mirror as main"
   git -C "$ROOT" push -q --force "$GIT_MIRROR_REPO" HEAD:refs/heads/main
-  # Dumb HTTP clients need the refs index regenerated after every push.
-  git --git-dir="$GIT_MIRROR_REPO" update-server-info
 }
 
 git_server() {
   if docker ps --format '{{.Names}}' | grep -qx "$GIT_SERVER"; then return; fi
   docker rm -f "$GIT_SERVER" >/dev/null 2>&1 || true
   log "starting Git server container '$GIT_SERVER' on the kind network"
-  MSYS_NO_PATHCONV=1 docker run -d --name "$GIT_SERVER" --network kind --restart unless-stopped     -v "$(host_path "$GIT_MIRROR_DIR"):/usr/share/nginx/html:ro" nginx:1.29-alpine >/dev/null
+  MSYS_NO_PATHCONV=1 docker run -d --name "$GIT_SERVER" --network kind --restart unless-stopped     -v "$(host_path "$GIT_MIRROR_DIR"):/srv/git:ro" --entrypoint git alpine/git:v2.54.0     daemon --reuseaddr --base-path=/srv/git --export-all --verbose /srv/git >/dev/null
 }
 
 gitops() {
