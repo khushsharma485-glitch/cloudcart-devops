@@ -38,9 +38,7 @@ services:
   order-service:
     strategy: blueGreen
     image:
-      tag: "2.1.0"
-    extraEnv:
-      DB_PORT: "5432x"
+      tag: "2.0.0"
 
 ingress:
   className: traefik
