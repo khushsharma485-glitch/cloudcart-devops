@@ -37,6 +37,8 @@ serviceDefaults:
 services:
   order-service:
     strategy: blueGreen
+    image:
+      tag: "2.0.0"
 
 ingress:
   className: traefik
