@@ -1,0 +1,6 @@
+# hadolint configuration (used by CI: static-analysis job)
+failure-threshold: warning
+ignored:
+  # `apk upgrade` is intentional: it pulls Alpine security fixes published
+  # after the base image was built. Trivy verifies the result.
+  - DL3017

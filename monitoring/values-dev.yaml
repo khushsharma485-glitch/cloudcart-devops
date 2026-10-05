@@ -1,0 +1,48 @@
+# DEV on EKS: persistent Prometheus, alerts to Slack.
+prometheus:
+  prometheusSpec:
+    retention: 7d
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: gp3
+          accessModes: [ReadWriteOnce]
+          resources:
+            requests:
+              storage: 20Gi
+
+alertmanager:
+  alertmanagerSpec:
+    # Mounted at /etc/alertmanager/secrets/alertmanager-slack/ (ExternalSecret).
+    secrets: [alertmanager-slack]
+  config:
+    global:
+      resolve_timeout: 5m
+    route:
+      receiver: slack
+      group_by: [alertname, namespace, job]
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+      routes:
+        - receiver: "null"
+          matchers: ['alertname =~ "Watchdog|InfoInhibitor"']
+    receivers:
+      - name: "null"
+      - name: slack
+        slack_configs:
+          - api_url_file: /etc/alertmanager/secrets/alertmanager-slack/webhook-url
+            channel: "#cloudcart-dev"
+            send_resolved: true
+            title: '[{{ .Status | toUpper }}] {{ .CommonLabels.alertname }} ({{ .CommonLabels.namespace }})'
+            text: '{{ range .Alerts }}{{ .Annotations.summary }} - {{ .Annotations.description }}{{ "\n" }}{{ end }}'
+    inhibit_rules:
+      - source_matchers: ['severity = "critical"']
+        target_matchers: ['severity = "warning"']
+        equal: [alertname, namespace, job]
+
+grafana:
+  persistence:
+    enabled: true
+    storageClassName: gp3
+    size: 5Gi

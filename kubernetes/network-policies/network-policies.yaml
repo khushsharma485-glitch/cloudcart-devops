@@ -1,0 +1,134 @@
+# Zero-trust networking for the cloudcart namespace.
+#
+# 1. Everything is denied by default (ingress and egress).
+# 2. Each allowed path is opened explicitly:
+#
+#    load balancer ──► user / product / order        (port 8080)
+#    order-service ──► user-service, product-service  (port 8080)
+#    all services  ──► PostgreSQL                     (port 5432)
+#    all services  ──► cluster DNS                    (port 53)
+#    monitoring    ──► all services (Prometheus scrape, port 8080)
+#
+#    Any other pod, for example a random debug pod, is blocked both ways.
+#
+# On EKS these are enforced by the VPC CNI network policy agent
+# (enableNetworkPolicy=true, see terraform/modules/eks).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+---
+# PostgreSQL lives outside the cluster (RDS in the database subnets).
+# Restrict egress to the VPC range on 5432 only.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-database-egress
+spec:
+  podSelector:
+    matchLabels:
+      cloudcart.io/tier: backend
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 10.10.0.0/16 # VPC CIDR (terraform/environments/dev vpc_cidr)
+      ports:
+        - { protocol: TCP, port: 5432 }
+---
+# The ALB uses target-type ip, so requests arrive from the ALB's addresses
+# in the public subnets of the VPC.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-from-load-balancer
+spec:
+  podSelector:
+    matchLabels:
+      cloudcart.io/tier: backend
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 10.10.0.0/16
+      ports:
+        - { protocol: TCP, port: 8080 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-prometheus-scrape
+spec:
+  podSelector:
+    matchLabels:
+      cloudcart.io/tier: backend
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - { protocol: TCP, port: 8080 }
+---
+# user-service and product-service accept internal calls only from
+# order-service.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-order-to-catalog
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values: [user-service, product-service]
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: order-service
+      ports:
+        - { protocol: TCP, port: 8080 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-order-egress-to-catalog
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: order-service
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values: [user-service, product-service]
+      ports:
+        - { protocol: TCP, port: 8080 }

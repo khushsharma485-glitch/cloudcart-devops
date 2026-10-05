@@ -1,0 +1,299 @@
+# CloudCart CI
+#
+#   build-test (x3) ─┐
+#   static-analysis ─┼─► image (x3): build ► Trivy gate ► push to ECR* ─► gitops-bump*
+#   iac-validate ────┘
+#
+#   * only for pushes to main (and version tags). Pull requests never get
+#     AWS credentials and never publish anything.
+#
+# The pipeline fails if: compilation fails, any unit/integration test fails,
+# the SonarQube quality gate fails (when configured), a Dockerfile/IaC lint
+# fails, or Trivy finds a CRITICAL vulnerability or a committed secret.
+#
+# Required configuration (Settings > Secrets and variables > Actions):
+#   vars.AWS_REGION            e.g. eu-west-1
+#   vars.AWS_CI_ROLE_ARN       IAM role trusted for GitHub OIDC (terraform output github_actions_role_arn)
+#   secrets.SONAR_TOKEN        optional; Sonar steps are skipped when absent
+#   vars.SONAR_HOST_URL        optional; defaults to https://sonarcloud.io
+#   vars.SONAR_ORGANIZATION    required for SonarCloud
+
+name: CI
+
+on:
+  push:
+    branches: [main, develop, "feature/**", "bugfix/**"]
+    tags: ["v*.*.*"]
+    paths-ignore: ["docs/**", "**.md"]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  JAVA_VERSION: "17"
+  TRIVY_IMAGE: aquasec/trivy:0.75.0
+  HADOLINT_IMAGE: hadolint/hadolint:v2.15.1
+  MAVEN_ARGS: -B -ntp   # read natively by Maven 3.9+
+
+jobs:
+  build-test:
+    name: Build & test (${{ matrix.service }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [user-service, product-service, order-service]
+    defaults:
+      run:
+        working-directory: services/${{ matrix.service }}
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # Sonar needs history for new-code detection
+
+      - name: Setup Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+          cache-dependency-path: services/${{ matrix.service }}/pom.xml
+
+      - name: Compile
+        run: mvn compile
+
+      - name: Unit tests
+        run: mvn test
+
+      - name: Integration tests (Testcontainers PostgreSQL)
+        run: mvn verify -DskipUTs
+
+      - name: SonarQube analysis + quality gate
+        if: env.SONAR_TOKEN != ''
+        run: >
+          mvn org.sonarsource.scanner.maven:sonar-maven-plugin:5.8.0.7211:sonar
+          -Dsonar.host.url=${{ vars.SONAR_HOST_URL || 'https://sonarcloud.io' }}
+          -Dsonar.organization=${{ vars.SONAR_ORGANIZATION }}
+          -Dsonar.projectKey=${{ vars.SONAR_ORGANIZATION }}_cloudcart-${{ matrix.service }}
+          -Dsonar.projectName=cloudcart-${{ matrix.service }}
+          -Dsonar.qualitygate.wait=true
+          -Dsonar.qualitygate.timeout=300
+
+      - name: Sonar skipped
+        if: env.SONAR_TOKEN == ''
+        run: echo "::notice::SONAR_TOKEN not configured - SonarQube analysis skipped"
+
+      - name: Upload test and coverage reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: reports-${{ matrix.service }}
+          path: |
+            services/${{ matrix.service }}/target/surefire-reports/
+            services/${{ matrix.service }}/target/failsafe-reports/
+            services/${{ matrix.service }}/target/site/jacoco/
+          retention-days: 14
+
+  static-analysis:
+    name: Static analysis & repo security scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Lint Dockerfiles (hadolint)
+        run: |
+          for f in services/*/Dockerfile; do
+            echo "::group::$f"
+            docker run --rm -i -v "$PWD/.hadolint.yaml:/.config/hadolint.yaml:ro" "$HADOLINT_IMAGE" < "$f"
+            echo "::endgroup::"
+          done
+
+      - name: Lint workflows (actionlint)
+        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.12 -color
+
+      # Trivy resolves Maven dependency trees from ~/.m2. Without a warm cache
+      # it downloads every parent POM from Maven Central and gets rate limited
+      # (HTTP 429), so resolve dependencies first and scan offline.
+      - name: Setup Java (dependency cache for Trivy)
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+          cache-dependency-path: services/*/pom.xml
+
+      - name: Resolve Maven dependencies
+        run: |
+          for s in services/*/pom.xml; do
+            mvn -q -f "$s" dependency:go-offline
+          done
+
+      - name: Trivy filesystem scan - gate (CRITICAL vulns, secrets, misconfig)
+        run: >
+          docker run --rm -v "$PWD:/src" -v "$HOME/.m2:/root/.m2:ro" -w /src "$TRIVY_IMAGE"
+          fs --offline-scan --exit-code 1 --severity CRITICAL --ignore-unfixed
+          --scanners vuln,secret,misconfig
+          --skip-dirs services/user-service/target,services/product-service/target,services/order-service/target
+          .
+
+      - name: Trivy filesystem scan - report (HIGH+CRITICAL to Security tab)
+        if: always()
+        run: >
+          docker run --rm -v "$PWD:/src" -v "$HOME/.m2:/root/.m2:ro" -w /src "$TRIVY_IMAGE"
+          fs --offline-scan --exit-code 0 --severity HIGH,CRITICAL --ignore-unfixed
+          --scanners vuln,secret,misconfig --format sarif --output trivy-fs.sarif .
+
+      - name: Upload SARIF
+        if: always() && github.event_name != 'pull_request'
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-fs.sarif
+          category: trivy-fs
+
+  iac-validate:
+    name: Validate Terraform, Helm & Kubernetes manifests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - name: Run validation script
+        run: ./scripts/validate-iac.sh
+
+  image:
+    name: Image (${{ matrix.service }})
+    needs: [build-test, static-analysis, iac-validate]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write        # OIDC token for AWS - no long-lived keys
+      security-events: write
+    strategy:
+      fail-fast: true
+      matrix:
+        service: [user-service, product-service, order-service]
+    env:
+      PUBLISH: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) }}
+      LOCAL_TAG: cloudcart/${{ matrix.service }}:${{ github.sha }}
+    outputs:
+      tag: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Build image
+        uses: docker/build-push-action@v7
+        with:
+          context: services/${{ matrix.service }}
+          load: true
+          push: false
+          tags: ${{ env.LOCAL_TAG }}
+          build-args: APP_VERSION=${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+          provenance: false
+
+      - name: Trivy image scan - gate (fail on CRITICAL)
+        run: >
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock "$TRIVY_IMAGE"
+          image --exit-code 1 --severity CRITICAL --ignore-unfixed --scanners vuln
+          --timeout 10m "$LOCAL_TAG"
+
+      - name: Trivy image scan - report
+        if: always()
+        run: >
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:/out" "$TRIVY_IMAGE"
+          image --exit-code 0 --severity HIGH,CRITICAL --ignore-unfixed --scanners vuln
+          --format sarif --output /out/trivy-image.sarif --timeout 10m "$LOCAL_TAG"
+
+      - name: Upload SARIF
+        if: always() && github.event_name != 'pull_request'
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-image.sarif
+          category: trivy-image-${{ matrix.service }}
+
+      # ---- publish: everything below runs only after all gates passed ----
+      - name: Configure AWS credentials (OIDC)
+        if: env.PUBLISH == 'true'
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_CI_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        if: env.PUBLISH == 'true'
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Push immutable tags to ECR
+        if: env.PUBLISH == 'true'
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          SERVICE: ${{ matrix.service }}
+        run: |
+          repo="$REGISTRY/cloudcart/$SERVICE"
+          tags=("$GITHUB_SHA")
+          # Semantic version tag on releases: v1.2.3 -> 1.2.3
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            tags+=("${GITHUB_REF#refs/tags/v}")
+          fi
+          for t in "${tags[@]}"; do
+            docker tag "$LOCAL_TAG" "$repo:$t"
+            docker push "$repo:$t"
+            echo "::notice::pushed $repo:$t"
+          done
+
+  gitops-bump:
+    name: Promote to dev (GitOps)
+    needs: image
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    concurrency:
+      group: gitops-dev
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - name: Set dev image tag
+        env:
+          TAG: ${{ github.sha }}
+        run: |
+          # yq is preinstalled on GitHub-hosted Ubuntu runners
+          yq -i '.global.image.tag = strenv(TAG)' helm/cloudcart/values-dev.yaml
+          git diff --stat
+
+      - name: Commit and push
+        env:
+          TAG: ${{ github.sha }}
+        run: |
+          git config user.name "cloudcart-deploy-bot"
+          git config user.email "cloudcart-deploy-bot@users.noreply.github.com"
+          git add helm/cloudcart/values-dev.yaml
+          if git diff --cached --quiet; then
+            echo "dev already at $TAG"; exit 0
+          fi
+          # Pushes made with GITHUB_TOKEN do not trigger new workflow runs,
+          # so this cannot loop. Argo CD picks the change up from Git.
+          git commit -m "deploy(dev): cloudcart ${TAG::12}"
+          git push origin HEAD:main

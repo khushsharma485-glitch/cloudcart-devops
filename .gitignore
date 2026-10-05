@@ -1,0 +1,49 @@
+# Build output
+target/
+*.class
+*.jar
+!.mvn/wrapper/maven-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+
+# Local environment & secrets - never commit these
+.env
+*.env.local
+*.pem
+*.key
+kubeconfig*
+secrets*.yaml
+!kubernetes/secrets/*.example.yaml
+!helm/cloudcart/templates/secrets*.yaml
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*.auto.tfvars
+terraform.tfvars
+!terraform/environments/*/terraform.tfvars.example
+
+# Helm
+helm/cloudcart/charts/
+*.tgz
+
+# Scan / test output
+trivy-*.sarif
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Account-specific backend settings
+backend.hcl

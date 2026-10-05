@@ -1,0 +1,88 @@
+# All environment-specific values come from environment variables.
+# Defaults below are only for running on a developer laptop against the
+# docker-compose PostgreSQL. No real credentials live in this file.
+server:
+  port: ${SERVER_PORT:8083}
+  shutdown: graceful
+
+spring:
+  application:
+    name: order-service
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:cloudcart}?sslmode=${DB_SSL_MODE:prefer}
+    username: ${DB_USERNAME:cloudcart}
+    password: ${DB_PASSWORD:cloudcart-local-only}
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:10}
+      connection-timeout: 5000
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: order_service
+  flyway:
+    default-schema: order_service
+    schemas: order_service
+    create-schemas: true
+    # Wait for the database at startup instead of crashing and being
+    # restarted while PostgreSQL is still starting or failing over.
+    connect-retries: ${DB_CONNECT_RETRIES:10}
+    connect-retries-interval: 5s
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+      group:
+        readiness:
+          include: readinessState,db
+  info:
+    env:
+      enabled: true
+    java:
+      enabled: true
+    build:
+      enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+
+info:
+  app:
+    name: ${spring.application.name}
+    version: ${APP_VERSION:dev}
+
+logging:
+  level:
+    root: INFO
+    com.cloudcart: ${APP_LOG_LEVEL:INFO}
+
+# Downstream services. In Kubernetes these resolve via cluster DNS.
+clients:
+  user-service:
+    base-url: ${USER_SERVICE_URL:http://localhost:8081}
+  product-service:
+    base-url: ${PRODUCT_SERVICE_URL:http://localhost:8082}
+  connect-timeout: ${CLIENT_CONNECT_TIMEOUT:2s}
+  read-timeout: ${CLIENT_READ_TIMEOUT:3s}
+
+# Fault injection for incident drills. Never enable in production.
+chaos:
+  enabled: ${CHAOS_ENABLED:false}

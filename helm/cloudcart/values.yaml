@@ -1,0 +1,161 @@
+# Default values shared by every environment.
+# Environment files (values-dev.yaml, values-prod.yaml, values-local.yaml)
+# only override what differs.
+
+global:
+  environment: dev
+  image:
+    # ECR registry, e.g. 123456789012.dkr.ecr.eu-west-1.amazonaws.com
+    # Empty = local images (cloudcart/<service>:<tag>).
+    registry: ""
+    repositoryPrefix: cloudcart
+    # Immutable tag (Git commit SHA). CI updates it in values-<env>.yaml.
+    tag: ""
+    pullPolicy: IfNotPresent
+
+# Runtime configuration -> ConfigMap (non-secret only).
+config:
+  dbHost: ""
+  dbPort: "5432"
+  dbName: cloudcart
+  dbSslMode: require
+  dbPoolSize: "10"
+  logLevel: INFO
+  # Fault-injection endpoints for incident drills (order-service).
+  chaosEnabled: false
+
+# Database credentials. Never put a password in values files.
+database:
+  # Name of the Secret with keys "username" and "password".
+  secretName: cloudcart-db
+  externalSecret:
+    # Create the Secret from AWS Secrets Manager via External Secrets.
+    enabled: false
+    secretStore: aws-secrets-manager
+    # terraform output rds_master_secret_arn
+    remoteKey: ""
+    refreshInterval: 1h
+
+# Restart pods automatically when the DB Secret rotates (Stakater Reloader).
+reloader:
+  enabled: true
+
+# Defaults applied to every service unless overridden below.
+serviceDefaults:
+  replicas: 2
+  # rolling   -> Deployment with RollingUpdate (maxSurge 1, maxUnavailable 0)
+  # blueGreen -> Argo Rollouts BlueGreen with automated analysis + rollback
+  strategy: rolling
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+  pdb:
+    enabled: true
+    minAvailable: 1
+  probes:
+    startup:
+      periodSeconds: 5
+      failureThreshold: 30
+    readiness:
+      periodSeconds: 10
+      timeoutSeconds: 3
+      failureThreshold: 3
+    liveness:
+      periodSeconds: 15
+      timeoutSeconds: 3
+      failureThreshold: 3
+  extraEnv: {}
+
+services:
+  # path      = Ingress route prefix
+  # smokePath = GET endpoint the blue-green pre-promotion test expects 200 from
+  user-service:
+    enabled: true
+    path: /api/users
+    smokePath: /api/users
+  product-service:
+    enabled: true
+    path: /api/products
+    smokePath: /api/products
+  order-service:
+    enabled: true
+    path: /api/orders
+    smokePath: /api/orders/user/0
+    # order-service calls the other two; network policies open that path.
+    callsCatalog: true
+
+ingress:
+  enabled: true
+  className: alb
+  host: ""
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/healthcheck-path: /actuator/health/readiness
+    alb.ingress.kubernetes.io/healthcheck-interval-seconds: "10"
+    alb.ingress.kubernetes.io/healthy-threshold-count: "2"
+    alb.ingress.kubernetes.io/unhealthy-threshold-count: "2"
+    alb.ingress.kubernetes.io/target-group-attributes: deregistration_delay.timeout_seconds=20
+    alb.ingress.kubernetes.io/load-balancer-attributes: routing.http.drop_invalid_header_fields.enabled=true
+
+networkPolicy:
+  enabled: true
+  # Where load-balancer traffic comes from (NetworkPolicy peers).
+  # EKS + ALB target-type ip: the VPC CIDR.
+  ingressFrom:
+    - ipBlock:
+        cidr: 10.10.0.0/16
+  # Where the database lives (NetworkPolicy peers). EKS: VPC CIDR (RDS).
+  databaseTo:
+    - ipBlock:
+        cidr: 10.10.0.0/16
+  monitoringNamespace: monitoring
+
+rbac:
+  enabled: true
+
+monitoring:
+  # Requires the Prometheus Operator CRDs (kube-prometheus-stack).
+  serviceMonitor:
+    enabled: true
+    interval: 15s
+    # Must match the Prometheus serviceMonitorSelector.
+    labels:
+      release: kube-prometheus-stack
+  prometheusRules:
+    enabled: true
+    labels:
+      release: kube-prometheus-stack
+
+# Argo Rollouts blue-green settings (services with strategy: blueGreen).
+blueGreen:
+  # Promote automatically once the preview stack passes analysis.
+  autoPromotionEnabled: true
+  # Keep the old (blue) ReplicaSet running after the switch so a rollback
+  # is instant (no new pods need to start).
+  scaleDownDelaySeconds: 600
+  analysis:
+    # In-cluster Prometheus used by the post-promotion error-rate check.
+    prometheusAddress: http://kube-prometheus-stack-prometheus.monitoring.svc:9090
+    maxErrorRate: "0.05"
+
+# Post-deploy smoke test (Helm hook + Argo CD PostSync). A failure marks the
+# release / sync as failed.
+smokeTest:
+  enabled: true
+  image: curlimages/curl:8.22.0
+
+# In-cluster PostgreSQL for local clusters only. Never enable on EKS.
+postgres:
+  enabled: false
+  image: postgres:16-alpine
+  storage: 1Gi

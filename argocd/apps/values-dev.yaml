@@ -1,0 +1,14 @@
+environment: dev
+repoURL: https://github.com/your-github-user/cloudcart-devops.git
+targetRevision: main
+
+addons:
+  externalSecrets:
+    enabled: true
+  awsLoadBalancerController:
+    enabled: true
+    clusterName: cloudcart-dev       # terraform output cluster_name
+    region: eu-west-1
+    vpcId: vpc-replace-with-output   # terraform output vpc_id
+  reloader:
+    enabled: true

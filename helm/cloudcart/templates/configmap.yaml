@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cloudcart-config
+  labels:
+    {{- include "cloudcart.labels" (dict "root" .) | nindent 4 }}
+data:
+  DB_HOST: {{ required "config.dbHost is required" .Values.config.dbHost | quote }}
+  DB_PORT: {{ .Values.config.dbPort | quote }}
+  DB_NAME: {{ .Values.config.dbName | quote }}
+  DB_SSL_MODE: {{ .Values.config.dbSslMode | quote }}
+  DB_POOL_SIZE: {{ .Values.config.dbPoolSize | quote }}
+  USER_SERVICE_URL: "http://user-service"
+  PRODUCT_SERVICE_URL: "http://product-service"
+  APP_LOG_LEVEL: {{ .Values.config.logLevel | quote }}
+  CHAOS_ENABLED: {{ .Values.config.chaosEnabled | quote }}

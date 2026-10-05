@@ -1,0 +1,11 @@
+# Trivy findings that are accepted risks. Every entry needs a justification
+# and is reviewed whenever the surrounding code changes.
+
+# AWS-0040: EKS public cluster access is enabled.
+# Accepted: the public endpoint only accepts explicit operator CIDRs
+# (validation forbids 0.0.0.0/0, see terraform/modules/eks/variables.tf) and
+# every request still needs IAM authentication. The private endpoint is on
+# too, so nodes never use the public path. Set eks_public_endpoint = false
+# once a VPN or SSM bastion exists, and delete this entry.
+AWS-0040
+AVD-AWS-0040

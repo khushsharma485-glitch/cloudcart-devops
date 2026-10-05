@@ -1,0 +1,47 @@
+# PROD on EKS - highly available. 3+ replicas spread over 3 AZs, larger
+# resources, blue-green with automated analysis for every service.
+
+global:
+  environment: prod
+  image:
+    registry: "123456789012.dkr.ecr.eu-west-1.amazonaws.com"
+    # Promoted from dev by the "Promote to prod" workflow (pull request).
+    tag: "replace-with-promoted-sha"
+
+config:
+  dbHost: "cloudcart-prod.xxxxxxxxxxxx.eu-west-1.rds.amazonaws.com"
+  dbPoolSize: "15"
+  logLevel: INFO
+  chaosEnabled: false
+
+database:
+  externalSecret:
+    enabled: true
+    remoteKey: "rds!db-replace-with-terraform-output"
+
+serviceDefaults:
+  replicas: 3
+  strategy: blueGreen
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  autoscaling:
+    minReplicas: 3
+    maxReplicas: 10
+  pdb:
+    minAvailable: 2
+
+networkPolicy:
+  ingressFrom:
+    - ipBlock:
+        cidr: 10.20.0.0/16
+  databaseTo:
+    - ipBlock:
+        cidr: 10.20.0.0/16
+
+blueGreen:
+  scaleDownDelaySeconds: 1800

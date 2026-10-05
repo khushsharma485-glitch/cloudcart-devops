@@ -1,0 +1,56 @@
+# Local kind cluster (scripts/local-cluster). In-cluster Postgres, Traefik
+# ingress, local images, chaos endpoints on.
+
+global:
+  environment: local
+  image:
+    registry: ""
+    tag: local
+
+config:
+  dbHost: postgres
+  dbSslMode: disable
+  chaosEnabled: true
+
+database:
+  # Created by scripts/local-cluster/local-cluster.sh with a random password.
+  secretName: cloudcart-db
+
+reloader:
+  enabled: false
+
+serviceDefaults:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  autoscaling:
+    minReplicas: 1
+    maxReplicas: 4
+  pdb:
+    minAvailable: 0
+
+services:
+  order-service:
+    strategy: blueGreen
+
+ingress:
+  className: traefik
+  annotations: {}
+
+networkPolicy:
+  ingressFrom:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: traefik
+  databaseTo:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: postgres
+
+postgres:
+  enabled: true

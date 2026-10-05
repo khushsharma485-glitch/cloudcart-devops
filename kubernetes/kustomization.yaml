@@ -1,0 +1,37 @@
+# Base manifests targeting EKS:   kubectl apply -k kubernetes/
+# Local kind cluster overlay:     kubectl apply -k scripts/local-cluster/overlay
+#
+# These plain manifests are the readable reference for every object CloudCart
+# runs. Day-to-day deployments use the Helm chart (helm/cloudcart) through
+# Argo CD, which renders the same objects with per-environment values.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: cloudcart
+
+resources:
+  - namespace.yaml
+  - configmaps/cloudcart-config.yaml
+  - secrets/external-secret.yaml
+  - user-service/deployment.yaml
+  - user-service/service.yaml
+  - user-service/autoscaling.yaml
+  - product-service/deployment.yaml
+  - product-service/service.yaml
+  - product-service/autoscaling.yaml
+  - order-service/deployment.yaml
+  - order-service/service.yaml
+  - order-service/autoscaling.yaml
+  - ingress/ingress.yaml
+  - network-policies/network-policies.yaml
+  - rbac/rbac.yaml
+
+# On EKS, point the images at ECR and pin an immutable tag, for example:
+#   kustomize edit set image cloudcart/user-service=123456789012.dkr.ecr.eu-west-1.amazonaws.com/cloudcart/user-service:<git-sha>
+images:
+  - name: cloudcart/user-service
+    newTag: local
+  - name: cloudcart/product-service
+    newTag: local
+  - name: cloudcart/order-service
+    newTag: local

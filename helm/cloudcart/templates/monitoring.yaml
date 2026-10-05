@@ -1,0 +1,164 @@
+{{- $ns := .Release.Namespace }}
+{{- if .Values.monitoring.serviceMonitor.enabled }}
+# Prometheus scrapes /actuator/prometheus on every CloudCart Service.
+# Preview (green) Services are excluded so pods are not scraped twice.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: cloudcart
+  labels:
+    {{- include "cloudcart.labels" (dict "root" .) | nindent 4 }}
+    {{- with .Values.monitoring.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/part-of: cloudcart
+    matchExpressions:
+      - key: cloudcart.io/role
+        operator: DoesNotExist
+  endpoints:
+    - port: http
+      path: /actuator/prometheus
+      interval: {{ .Values.monitoring.serviceMonitor.interval }}
+      scrapeTimeout: 10s
+{{- end }}
+{{- if .Values.monitoring.prometheusRules.enabled }}
+---
+# Alert rules live with the application so they are versioned, reviewed and
+# deployed together with the code they watch.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: cloudcart-alerts
+  labels:
+    {{- include "cloudcart.labels" (dict "root" .) | nindent 4 }}
+    {{- with .Values.monitoring.prometheusRules.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: cloudcart.recording
+      interval: 30s
+      rules:
+        - record: cloudcart:http_requests:rate5m
+          expr: sum by (namespace, job) (rate(http_server_requests_seconds_count{namespace="{{ $ns }}", uri!~"/actuator.*"}[5m]))
+        - record: cloudcart:http_errors:rate5m
+          expr: sum by (namespace, job) (rate(http_server_requests_seconds_count{namespace="{{ $ns }}", uri!~"/actuator.*", status=~"5.."}[5m]))
+        - record: cloudcart:http_latency_p95:5m
+          expr: histogram_quantile(0.95, sum by (namespace, job, le) (rate(http_server_requests_seconds_bucket{namespace="{{ $ns }}", uri!~"/actuator.*"}[5m])))
+
+    - name: cloudcart.availability
+      rules:
+        - alert: CloudCartServiceDown
+          expr: sum by (job) (up{namespace="{{ $ns }}", job=~"user-service|product-service|order-service"}) == 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "{{ "{{ $labels.job }}" }} is down"
+            description: "Prometheus cannot scrape any {{ "{{ $labels.job }}" }} pod for 2 minutes. The service is unavailable."
+            runbook_url: https://github.com/cloudcart/cloudcart-devops/blob/main/docs/incidents/README.md
+
+        - alert: CloudCartPodNotReady
+          expr: sum by (pod) (kube_pod_status_ready{namespace="{{ $ns }}", condition="true"} == 0) > 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Pod {{ "{{ $labels.pod }}" }} not ready for 5 minutes"
+            description: "The pod is failing its readiness probe and receives no traffic."
+
+        - alert: CloudCartCrashLooping
+          expr: max by (pod, container) (kube_pod_container_status_waiting_reason{namespace="{{ $ns }}", reason="CrashLoopBackOff"}) == 1
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "{{ "{{ $labels.pod }}" }} is in CrashLoopBackOff"
+            description: "Check `kubectl logs --previous` - see docs/incidents/01-crashloopbackoff.md."
+
+        - alert: CloudCartReplicasUnavailable
+          expr: kube_deployment_status_replicas_unavailable{namespace="{{ $ns }}"} > 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ "{{ $labels.deployment }}" }} has unavailable replicas"
+            description: "{{ "{{ $value }}" }} replica(s) unavailable for 10 minutes."
+
+    - name: cloudcart.golden-signals
+      rules:
+        - alert: CloudCartHighErrorRate
+          expr: |
+            cloudcart:http_errors:rate5m / clamp_min(cloudcart:http_requests:rate5m, 0.001) > 0.05
+            and cloudcart:http_requests:rate5m > 0.1
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "{{ "{{ $labels.job }}" }} error rate above 5%"
+            description: "{{ "{{ $value | humanizePercentage }}" }} of requests return 5xx."
+
+        - alert: CloudCartHighLatency
+          expr: cloudcart:http_latency_p95:5m > 0.5
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ "{{ $labels.job }}" }} p95 latency above 500ms"
+            description: "p95 latency is {{ "{{ $value | humanizeDuration }}" }}."
+
+        - alert: CloudCartHighCPU
+          expr: |
+            sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="{{ $ns }}", container="app"}[5m]))
+              / sum by (pod) (kube_pod_container_resource_limits{namespace="{{ $ns }}", container="app", resource="cpu"}) > 0.8
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ "{{ $labels.pod }}" }} CPU above 80% of its limit"
+            description: "Sustained CPU pressure. Check the HPA is scaling (docs/incidents/02-high-cpu.md)."
+
+        - alert: CloudCartHighMemory
+          expr: |
+            sum by (pod) (container_memory_working_set_bytes{namespace="{{ $ns }}", container="app"})
+              / sum by (pod) (kube_pod_container_resource_limits{namespace="{{ $ns }}", container="app", resource="memory"}) > 0.85
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ "{{ $labels.pod }}" }} memory above 85% of its limit"
+            description: "Risk of OOMKill (docs/incidents/03-high-memory.md)."
+
+        - alert: CloudCartJvmHeapHigh
+          expr: |
+            sum by (pod) (jvm_memory_used_bytes{namespace="{{ $ns }}", area="heap"})
+              / sum by (pod) (jvm_memory_max_bytes{namespace="{{ $ns }}", area="heap"} > 0) > 0.9
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ "{{ $labels.pod }}" }} JVM heap above 90%"
+
+        - alert: CloudCartDbPoolExhausted
+          expr: max by (pod) (hikaricp_connections_pending{namespace="{{ $ns }}"}) > 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ "{{ $labels.pod }}" }} is waiting for database connections"
+            description: "Threads are queuing for a JDBC connection (docs/incidents/05-database-connection-failure.md)."
+
+        - alert: CloudCartAutoscalerMaxedOut
+          expr: |
+            kube_horizontalpodautoscaler_status_current_replicas{namespace="{{ $ns }}"}
+              >= kube_horizontalpodautoscaler_spec_max_replicas{namespace="{{ $ns }}"}
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "HPA {{ "{{ $labels.horizontalpodautoscaler }}" }} at max replicas"
+            description: "The service cannot scale further. Raise maxReplicas or add capacity."
+{{- end }}

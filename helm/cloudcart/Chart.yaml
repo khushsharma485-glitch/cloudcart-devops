@@ -1,0 +1,10 @@
+apiVersion: v2
+name: cloudcart
+description: CloudCart microservices (user, product, order) with probes, autoscaling, network policies, RBAC, monitoring and blue-green delivery.
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+kubeVersion: ">=1.30.0-0"
+keywords: [cloudcart, spring-boot, microservices]
+maintainers:
+  - name: CloudCart Platform Team

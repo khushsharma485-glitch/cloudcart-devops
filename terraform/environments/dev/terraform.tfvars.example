@@ -1,0 +1,21 @@
+# Copy to terraform.tfvars (git-ignored) and adjust.
+aws_region        = "eu-west-1"
+github_repository = "your-github-user/cloudcart-devops"
+
+# Required: your public IP(s) allowed to reach the Kubernetes API.
+# Find yours with: curl -s https://checkip.amazonaws.com
+eks_public_endpoint_cidrs = ["203.0.113.10/32"]
+
+# Map IAM roles to Kubernetes RBAC groups (see kubernetes/rbac):
+# eks_access_entries = {
+#   developers = {
+#     principal_arn     = "arn:aws:iam::123456789012:role/cloudcart-developers"
+#     kubernetes_groups = ["cloudcart:developers"]
+#   }
+#   platform-admins = {
+#     principal_arn = "arn:aws:iam::123456789012:role/cloudcart-platform-admins"
+#     policy        = "AmazonEKSClusterAdminPolicy"
+#   }
+# }
+
+# alert_emails = ["oncall@example.com"]

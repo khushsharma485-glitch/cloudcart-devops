@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cloudcart
+  labels:
+    app.kubernetes.io/part-of: cloudcart
+    # Pod Security Admission: reject any pod that is not fully hardened
+    # (root user, privilege escalation, host mounts, extra capabilities...).
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted

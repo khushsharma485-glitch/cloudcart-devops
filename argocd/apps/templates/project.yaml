@@ -1,0 +1,39 @@
+# AppProject: limits what CloudCart Applications may deploy and from where.
+# Anything outside these lists is refused by Argo CD.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: {{ .Values.project }}
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-3"
+spec:
+  description: CloudCart workloads and platform add-ons
+  sourceRepos:
+    - {{ .Values.repoURL }}
+    {{- range $k, $a := .Values.addons }}
+    {{- if $a.enabled }}
+    - {{ $a.repo }}
+    {{- end }}
+    {{- end }}
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: {{ .Values.cloudcart.namespace }}
+    - server: https://kubernetes.default.svc
+      namespace: monitoring
+    - server: https://kubernetes.default.svc
+      namespace: argo-rollouts
+    - server: https://kubernetes.default.svc
+      namespace: external-secrets
+    - server: https://kubernetes.default.svc
+      namespace: reloader
+    - server: https://kubernetes.default.svc
+      namespace: kube-system
+    - server: https://kubernetes.default.svc
+      namespace: argocd
+  # Platform charts install CRDs, webhooks and cluster RBAC.
+  clusterResourceWhitelist:
+    - group: "*"
+      kind: "*"
+  orphanedResources:
+    warn: true

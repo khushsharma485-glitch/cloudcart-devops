@@ -1,0 +1,53 @@
+# Values for installing Argo CD itself (scripts/bootstrap-argocd.sh).
+# Argo CD then deploys everything else from Git.
+global:
+  domain: argocd.local
+
+configs:
+  params:
+    # TLS is terminated at the ingress / port-forward in this setup.
+    server.insecure: true
+  cm:
+    # Poll Git every 60s (a GitHub webhook can make this instant).
+    timeout.reconciliation: 60s
+    # Make app-of-apps sync waves wait for child Applications to be Healthy.
+    resource.customizations.health.argoproj.io_Application: |
+      hs = {}
+      hs.status = "Progressing"
+      hs.message = ""
+      if obj.status ~= nil and obj.status.health ~= nil then
+        hs.status = obj.status.health.status
+        if obj.status.health.message ~= nil then
+          hs.message = obj.status.health.message
+        end
+      end
+      return hs
+  rbac:
+    # Read-only by default; admins are granted explicitly.
+    policy.default: role:readonly
+
+dex:
+  enabled: false
+
+controller:
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { memory: 1Gi }
+repoServer:
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { memory: 512Mi }
+server:
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { memory: 256Mi }
+applicationSet:
+  resources:
+    requests: { cpu: 10m, memory: 64Mi }
+    limits: { memory: 128Mi }
+notifications:
+  enabled: false
+redis:
+  resources:
+    requests: { cpu: 10m, memory: 32Mi }
+    limits: { memory: 128Mi }

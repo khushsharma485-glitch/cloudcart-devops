@@ -1,0 +1,104 @@
+# Local development stack: PostgreSQL + the three CloudCart services.
+#
+#   docker compose up -d --build     start everything
+#   docker compose logs -f           follow logs
+#   docker compose down              stop (add -v to delete the database)
+#
+# Credentials: the fallback password below exists only so `docker compose up`
+# works on a fresh clone. It protects a throwaway database bound to
+# localhost. Override it by copying .env.example to .env. Real environments
+# never use this file; they get credentials from AWS Secrets Manager.
+
+name: cloudcart
+
+x-service-defaults: &service-defaults
+  restart: unless-stopped
+  read_only: true
+  tmpfs:
+    - /tmp
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  depends_on:
+    postgres:
+      condition: service_healthy
+  deploy:
+    resources:
+      limits:
+        cpus: "1.0"
+        memory: 512M
+
+x-db-env: &db-env
+  DB_HOST: postgres
+  DB_PORT: "5432"
+  DB_NAME: ${POSTGRES_DB:-cloudcart}
+  DB_USERNAME: ${POSTGRES_USER:-cloudcart}
+  DB_PASSWORD: ${POSTGRES_PASSWORD:-cloudcart-local-only}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-cloudcart}
+      POSTGRES_USER: ${POSTGRES_USER:-cloudcart}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cloudcart-local-only}
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  user-service:
+    <<: *service-defaults
+    build:
+      context: ./services/user-service
+      args:
+        APP_VERSION: local
+    image: cloudcart/user-service:local
+    environment:
+      <<: *db-env
+    ports:
+      - "127.0.0.1:8081:8080"
+
+  product-service:
+    <<: *service-defaults
+    build:
+      context: ./services/product-service
+      args:
+        APP_VERSION: local
+    image: cloudcart/product-service:local
+    environment:
+      <<: *db-env
+    ports:
+      - "127.0.0.1:8082:8080"
+
+  order-service:
+    <<: *service-defaults
+    build:
+      context: ./services/order-service
+      args:
+        APP_VERSION: local
+    image: cloudcart/order-service:local
+    environment:
+      <<: *db-env
+      USER_SERVICE_URL: http://user-service:8080
+      PRODUCT_SERVICE_URL: http://product-service:8080
+      CHAOS_ENABLED: ${CHAOS_ENABLED:-false}
+    ports:
+      - "127.0.0.1:8083:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      user-service:
+        condition: service_healthy
+      product-service:
+        condition: service_healthy
+
+volumes:
+  postgres-data:

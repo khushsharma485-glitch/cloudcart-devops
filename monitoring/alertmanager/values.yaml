@@ -1,0 +1,11 @@
+# Alertmanager: groups, deduplicates and routes alerts from Prometheus.
+# The receivers differ per environment (monitoring/values-<env>.yaml):
+#   local -> webhook logger pod (prints every notification it receives)
+#   dev   -> Slack #cloudcart-dev
+#   prod  -> Slack #cloudcart-alerts (critical alerts repeat every hour)
+alertmanager:
+  alertmanagerSpec:
+    retention: 120h
+    resources:
+      requests: { cpu: 10m, memory: 32Mi }
+      limits: { memory: 128Mi }

@@ -1,0 +1,33 @@
+{{- if .Values.ingress.enabled }}
+# Only /api/* is published. Actuator and /internal/* stay cluster-internal.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: cloudcart
+  labels:
+    {{- include "cloudcart.labels" (dict "root" .) | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  rules:
+    - {{- with .Values.ingress.host }}
+      host: {{ . }}
+      {{- end }}
+      http:
+        paths:
+          {{- range $name, $_ := .Values.services }}
+          {{- $svc := include "cloudcart.svc" (dict "root" $ "name" $name) | fromYaml }}
+          {{- if $svc.enabled }}
+          - path: {{ $svc.path }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $name }}
+                port:
+                  name: http
+          {{- end }}
+          {{- end }}
+{{- end }}

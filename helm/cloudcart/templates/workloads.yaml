@@ -1,0 +1,76 @@
+{{- /*
+One workload per enabled service:
+  strategy: rolling   -> apps/v1 Deployment (RollingUpdate, zero downtime)
+  strategy: blueGreen -> argoproj.io/v1alpha1 Rollout
+       blue  = active Service (live traffic)
+       green = preview Service (new version, no live traffic)
+       prePromotionAnalysis  : smoke test against green, must pass to switch
+       postPromotionAnalysis : Prometheus error rate after the switch
+       either analysis fails -> Rollout aborts -> traffic stays on / returns to blue
+*/ -}}
+{{- range $name, $_ := .Values.services }}
+{{- $svc := include "cloudcart.svc" (dict "root" $ "name" $name) | fromYaml }}
+{{- if $svc.enabled }}
+{{- $ctx := dict "root" $ "name" $name "svc" $svc }}
+---
+{{- if eq $svc.strategy "blueGreen" }}
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+{{- else }}
+apiVersion: apps/v1
+kind: Deployment
+{{- end }}
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "cloudcart.labels" $ctx | nindent 4 }}
+  {{- if $.Values.reloader.enabled }}
+  annotations:
+    reloader.stakater.com/auto: "true"
+  {{- end }}
+spec:
+  {{- if not $svc.autoscaling.enabled }}
+  replicas: {{ $svc.replicas }}
+  {{- end }}
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      {{- include "cloudcart.selectorLabels" $ctx | nindent 6 }}
+  {{- if eq $svc.strategy "blueGreen" }}
+  progressDeadlineSeconds: 600
+  # Abort (and keep blue) instead of hanging when green never gets healthy.
+  progressDeadlineAbort: true
+  strategy:
+    blueGreen:
+      activeService: {{ $name }}
+      previewService: {{ $name }}-preview
+      autoPromotionEnabled: {{ $.Values.blueGreen.autoPromotionEnabled }}
+      scaleDownDelaySeconds: {{ $.Values.blueGreen.scaleDownDelaySeconds }}
+      prePromotionAnalysis:
+        templates:
+          - templateName: cloudcart-smoke
+        args:
+          - name: service-url
+            value: http://{{ $name }}-preview.{{ $.Release.Namespace }}.svc
+          - name: api-path
+            value: {{ $svc.smokePath }}
+      {{- if $.Values.monitoring.serviceMonitor.enabled }}
+      postPromotionAnalysis:
+        templates:
+          - templateName: cloudcart-error-rate
+        args:
+          - name: service
+            value: {{ $name }}
+      {{- end }}
+  {{- else }}
+  progressDeadlineSeconds: 300
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  {{- end }}
+  template:
+    {{- include "cloudcart.podTemplate" $ctx | nindent 4 }}
+{{- end }}
+{{- end }}

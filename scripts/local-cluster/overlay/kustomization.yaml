@@ -1,0 +1,94 @@
+# Local overlay for a kind cluster (scripts/local-cluster/local-cluster.sh up).
+#
+# Differences from the EKS base:
+#  - PostgreSQL runs in-cluster instead of RDS
+#  - the cloudcart-db Secret is created by the script with a random password
+#    (no ExternalSecret, because there is no AWS Secrets Manager locally)
+#  - Traefik replaces the AWS Load Balancer Controller
+#  - network policies point at the local Postgres pod / Traefik namespace
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: cloudcart
+
+resources:
+  - ../../../kubernetes
+  - postgres.yaml
+
+patches:
+  - target:
+      kind: ExternalSecret
+      name: cloudcart-db
+    patch: |-
+      $patch: delete
+      apiVersion: external-secrets.io/v1
+      kind: ExternalSecret
+      metadata:
+        name: cloudcart-db
+
+  - target:
+      kind: ConfigMap
+      name: cloudcart-config
+    patch: |-
+      - op: replace
+        path: /data/DB_HOST
+        value: postgres
+      - op: replace
+        path: /data/DB_SSL_MODE
+        value: disable
+      - op: replace
+        path: /data/CHAOS_ENABLED
+        value: "true"
+
+  - target:
+      kind: Ingress
+      name: cloudcart
+    patch: |-
+      - op: replace
+        path: /spec/ingressClassName
+        value: traefik
+
+  # Local: only one replica per service so the stack fits on a laptop.
+  - target:
+      kind: HorizontalPodAutoscaler
+    patch: |-
+      - op: replace
+        path: /spec/minReplicas
+        value: 1
+      - op: replace
+        path: /spec/maxReplicas
+        value: 4
+  - target:
+      kind: Deployment
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+  - target:
+      kind: PodDisruptionBudget
+    patch: |-
+      - op: replace
+        path: /spec/minAvailable
+        value: 0
+
+  - target:
+      kind: NetworkPolicy
+      name: allow-database-egress
+    patch: |-
+      - op: replace
+        path: /spec/egress/0/to/0
+        value:
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: postgres
+
+  - target:
+      kind: NetworkPolicy
+      name: allow-ingress-from-load-balancer
+    patch: |-
+      - op: replace
+        path: /spec/ingress/0/from/0
+        value:
+          namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: traefik

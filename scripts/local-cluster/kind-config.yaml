@@ -1,0 +1,26 @@
+# Local Kubernetes cluster for CloudCart (kind = Kubernetes in Docker).
+# One control-plane and two workers, so pod spreading, PDBs and node
+# drains behave like a real multi-node cluster.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: cloudcart
+networking:
+  # Calico replaces kindnet. kindnet enforced ingress policies but let
+  # default-deny egress traffic through in testing; Calico enforces both
+  # directions, like the VPC CNI network policy agent on EKS.
+  disableDefaultCNI: true
+  podSubnet: 192.168.0.0/16
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      # Traefik ingress NodePort -> http://localhost:8080 on the host
+      - containerPort: 30080
+        hostPort: 8080
+        listenAddress: "127.0.0.1"
+        protocol: TCP
+  - role: worker
+    labels:
+      topology.kubernetes.io/zone: zone-a
+  - role: worker
+    labels:
+      topology.kubernetes.io/zone: zone-b

@@ -1,0 +1,77 @@
+{{- if .Values.smokeTest.enabled }}
+# Post-deployment smoke test across all three services.
+#  - helm install/upgrade: runs as a post-install/post-upgrade hook. With
+#    `helm upgrade --atomic` a failure rolls the release back automatically.
+#  - Argo CD: Helm hooks map to a PostSync hook, which runs only after every
+#    resource is healthy. A failure marks the sync Failed and fires an alert.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: cloudcart-smoke-test
+  labels:
+    {{- include "cloudcart.labels" (dict "root" .) | nindent 4 }}
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "10"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 300
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        cloudcart.io/role: smoke-test
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 100
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: smoke
+          image: {{ .Values.smokeTest.image }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              U=http://user-service; P=http://product-service; O=http://order-service
+              field() { sed -nE "s/.*\"$1\":\"?([^\",}]*)\"?.*/\1/p" | head -n1; }
+              check() { want=$1; shift; code=$(curl -s -o /tmp/body -w '%{http_code}' -m 10 "$@"); \
+                echo "$want <- $code $*"; [ "$code" = "$want" ] || { cat /tmp/body; exit 1; }; }
+
+              for s in $U $P $O; do
+                for i in $(seq 1 24); do
+                  curl -fsS -m 5 "$s/actuator/health/readiness" >/dev/null && break
+                  [ "$i" = 24 ] && { echo "$s not ready"; exit 1; }; sleep 5
+                done
+                echo "ready: $s"
+              done
+
+              id=$(date +%s)
+              check 201 -X POST -H 'Content-Type: application/json' -d "{\"name\":\"smoke\",\"email\":\"smoke-$id@example.com\"}" $U/api/users
+              uid=$(field id </tmp/body)
+              check 201 -X POST -H 'Content-Type: application/json' -d '{"name":"smoke","price":5.00,"stock":3}' $P/api/products
+              pid=$(field id </tmp/body)
+              check 201 -X POST -H 'Content-Type: application/json' -d "{\"userId\":$uid,\"productId\":$pid,\"quantity\":1}" $O/api/orders
+              check 422 -X POST -H 'Content-Type: application/json' -d "{\"userId\":$uid,\"productId\":$pid,\"quantity\":99}" $O/api/orders
+              check 204 -X DELETE $P/api/products/$pid
+              check 204 -X DELETE $U/api/users/$uid
+              echo "SMOKE TEST PASSED"
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { cpu: 100m, memory: 64Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+{{- end }}

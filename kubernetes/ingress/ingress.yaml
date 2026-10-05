@@ -1,0 +1,51 @@
+# Internet -> AWS Application Load Balancer -> pods.
+#
+# The AWS Load Balancer Controller watches this Ingress and creates an
+# internet-facing ALB in the public subnets. target-type "ip" sends traffic
+# straight to pod IPs (no NodePort hop). Only /api/* is routed; actuator and
+# /internal/* endpoints are not reachable from the Internet.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: cloudcart
+  labels:
+    app.kubernetes.io/part-of: cloudcart
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/healthcheck-path: /actuator/health/readiness
+    alb.ingress.kubernetes.io/healthcheck-interval-seconds: "10"
+    alb.ingress.kubernetes.io/healthy-threshold-count: "2"
+    alb.ingress.kubernetes.io/unhealthy-threshold-count: "2"
+    alb.ingress.kubernetes.io/target-group-attributes: deregistration_delay.timeout_seconds=20
+    alb.ingress.kubernetes.io/load-balancer-attributes: routing.http.drop_invalid_header_fields.enabled=true
+    # For HTTPS, add an ACM certificate and redirect HTTP:
+    # alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:...
+    # alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+    # alb.ingress.kubernetes.io/ssl-redirect: "443"
+spec:
+  ingressClassName: alb
+  rules:
+    - http:
+        paths:
+          - path: /api/users
+            pathType: Prefix
+            backend:
+              service:
+                name: user-service
+                port:
+                  name: http
+          - path: /api/products
+            pathType: Prefix
+            backend:
+              service:
+                name: product-service
+                port:
+                  name: http
+          - path: /api/orders
+            pathType: Prefix
+            backend:
+              service:
+                name: order-service
+                port:
+                  name: http

@@ -1,0 +1,256 @@
+{{- $env := .Values.environment }}
+{{- $a := .Values.addons }}
+{{- /* Sync waves: CRD-providing add-ons first (-2), then the rest (-1), then apps (0). */ -}}
+
+{{- if $a.argoRollouts.enabled }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argo-rollouts
+  {{- include "apps.meta" . | nindent 2 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  project: {{ .Values.project }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argo-rollouts
+  source:
+    repoURL: {{ $a.argoRollouts.repo }}
+    chart: {{ $a.argoRollouts.chart }}
+    targetRevision: {{ $a.argoRollouts.version }}
+    helm:
+      valuesObject:
+        dashboard:
+          enabled: true
+        controller:
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { memory: 256Mi }
+  {{- include "apps.syncPolicy" . | nindent 2 }}
+{{- end }}
+
+{{- if $a.monitoring.enabled }}
+---
+# Prometheus + Alertmanager + Grafana + kube-state-metrics + node-exporter.
+# Values are layered: shared files per component, then the environment file.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kube-prometheus-stack
+  {{- include "apps.meta" . | nindent 2 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  project: {{ .Values.project }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  sources:
+    - repoURL: {{ $a.monitoring.repo }}
+      chart: {{ $a.monitoring.chart }}
+      targetRevision: {{ $a.monitoring.version }}
+      helm:
+        releaseName: kube-prometheus-stack
+        valueFiles:
+          - $values/monitoring/prometheus/values.yaml
+          - $values/monitoring/alertmanager/values.yaml
+          - $values/monitoring/grafana/values.yaml
+          - $values/monitoring/values-{{ $env }}.yaml
+    - repoURL: {{ .Values.repoURL }}
+      targetRevision: {{ .Values.targetRevision }}
+      ref: values
+  {{- include "apps.syncPolicy" . | nindent 2 }}
+---
+# Grafana dashboards (ConfigMaps picked up by the Grafana sidecar) and the
+# local alert receiver.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: monitoring-config
+  {{- include "apps.meta" . | nindent 2 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  project: {{ .Values.project }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  source:
+    repoURL: {{ .Values.repoURL }}
+    targetRevision: {{ .Values.targetRevision }}
+    path: monitoring/overlays/{{ $env }}
+  {{- include "apps.syncPolicy" . | nindent 2 }}
+{{- end }}
+
+{{- if $a.loki.enabled }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: loki
+  {{- include "apps.meta" . | nindent 2 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  project: {{ .Values.project }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  sources:
+    - repoURL: {{ $a.loki.repo }}
+      chart: {{ $a.loki.chart }}
+      targetRevision: {{ $a.loki.version }}
+      helm:
+        releaseName: loki
+        valueFiles:
+          - $values/monitoring/loki/values.yaml
+    - repoURL: {{ .Values.repoURL }}
+      targetRevision: {{ .Values.targetRevision }}
+      ref: values
+  {{- include "apps.syncPolicy" . | nindent 2 }}
+{{- end }}
+
+{{- if $a.alloy.enabled }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: alloy
+  {{- include "apps.meta" . | nindent 2 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  project: {{ .Values.project }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  sources:
+    - repoURL: {{ $a.alloy.repo }}
+      chart: {{ $a.alloy.chart }}
+      targetRevision: {{ $a.alloy.version }}
+      helm:
+        releaseName: alloy
+        valueFiles:
+          - $values/monitoring/loki/alloy-values.yaml
+    - repoURL: {{ .Values.repoURL }}
+      targetRevision: {{ .Values.targetRevision }}
+      ref: values
+  {{- include "apps.syncPolicy" . | nindent 2 }}
+{{- end }}
+
+{{- if $a.externalSecrets.enabled }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: external-secrets
+  {{- include "apps.meta" . | nindent 2 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  project: {{ .Values.project }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: external-secrets
+  source:
+    repoURL: {{ $a.externalSecrets.repo }}
+    chart: {{ $a.externalSecrets.chart }}
+    targetRevision: {{ $a.externalSecrets.version }}
+    helm:
+      valuesObject:
+        installCRDs: true
+        serviceAccount:
+          name: external-secrets # bound to an IAM role by EKS Pod Identity (terraform/modules/iam)
+  {{- include "apps.syncPolicy" . | nindent 2 }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: secret-stores
+  {{- include "apps.meta" . | nindent 2 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  project: {{ .Values.project }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: external-secrets
+  source:
+    repoURL: {{ .Values.repoURL }}
+    targetRevision: {{ .Values.targetRevision }}
+    path: argocd/platform/secret-stores
+    helm:
+      valuesObject:
+        region: {{ required "addons.awsLoadBalancerController.region" $a.awsLoadBalancerController.region }}
+        environment: {{ $env }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 10
+      backoff:
+        duration: 15s
+        factor: 2
+        maxDuration: 5m
+    syncOptions:
+      # The External Secrets CRDs come from the external-secrets Application.
+      - SkipDryRunOnMissingResource=true
+{{- end }}
+
+{{- if $a.awsLoadBalancerController.enabled }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: aws-load-balancer-controller
+  {{- include "apps.meta" . | nindent 2 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  project: {{ .Values.project }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  source:
+    repoURL: {{ $a.awsLoadBalancerController.repo }}
+    chart: {{ $a.awsLoadBalancerController.chart }}
+    targetRevision: {{ $a.awsLoadBalancerController.version }}
+    helm:
+      valuesObject:
+        clusterName: {{ required "addons.awsLoadBalancerController.clusterName" $a.awsLoadBalancerController.clusterName }}
+        region: {{ $a.awsLoadBalancerController.region }}
+        vpcId: {{ $a.awsLoadBalancerController.vpcId }}
+        replicaCount: 2
+        serviceAccount:
+          name: aws-load-balancer-controller # EKS Pod Identity (terraform/modules/iam)
+  {{- include "apps.syncPolicy" . | nindent 2 }}
+{{- end }}
+
+{{- if $a.reloader.enabled }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: reloader
+  {{- include "apps.meta" . | nindent 2 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  project: {{ .Values.project }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: reloader
+  source:
+    repoURL: {{ $a.reloader.repo }}
+    chart: {{ $a.reloader.chart }}
+    targetRevision: {{ $a.reloader.version }}
+    helm:
+      valuesObject:
+        reloader:
+          isArgoRollouts: true
+          watchGlobally: true
+  {{- include "apps.syncPolicy" . | nindent 2 }}
+{{- end }}

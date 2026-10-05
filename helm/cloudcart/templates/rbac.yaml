@@ -1,0 +1,131 @@
+{{- if .Values.rbac.enabled }}
+# Least-privilege access. Nobody gets cluster-admin by default.
+#
+# Identity mapping on EKS: IAM role -> EKS access entry with a Kubernetes
+# group (terraform eks_access_entries.kubernetes_groups) -> RoleBinding.
+#
+#   developer       read workloads + logs + port-forward in cloudcart. No Secrets, no writes.
+#   deployment-bot  restart / scale / roll back workloads in cloudcart. No Secrets, cannot create pods directly.
+#   monitoring      cluster-wide read-only discovery of pods/services/endpoints/nodes (Prometheus).
+#
+# Argo CD has its own service account (installed by its chart) and is the
+# only component that applies manifests from Git.
+
+# ---------------------------------------------------------------- developer
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: developer
+  namespace: {{ .Release.Namespace }}
+rules:
+  - apiGroups: [""]
+    resources: [pods, pods/log, services, endpoints, configmaps, events, serviceaccounts]
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [pods/portforward]
+    verbs: [create]
+  - apiGroups: [apps]
+    resources: [deployments, replicasets]
+    verbs: [get, list, watch]
+  - apiGroups: [autoscaling]
+    resources: [horizontalpodautoscalers]
+    verbs: [get, list, watch]
+  - apiGroups: [policy]
+    resources: [poddisruptionbudgets]
+    verbs: [get, list, watch]
+  - apiGroups: [networking.k8s.io]
+    resources: [ingresses, networkpolicies]
+    verbs: [get, list, watch]
+  - apiGroups: [argoproj.io]
+    resources: [rollouts, analysisruns, analysistemplates]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: developer
+  namespace: {{ .Release.Namespace }}
+subjects:
+  - kind: Group
+    name: cloudcart:developers
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: developer
+  apiGroup: rbac.authorization.k8s.io
+---
+# ----------------------------------------------------------- deployment-bot
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: deployment-bot
+  namespace: {{ .Release.Namespace }}
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: deployment-bot
+  namespace: {{ .Release.Namespace }}
+rules:
+  - apiGroups: [apps]
+    resources: [deployments, deployments/scale]
+    verbs: [get, list, watch, patch, update]
+  - apiGroups: [apps]
+    resources: [replicasets]
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [pods, events]
+    verbs: [get, list, watch]
+  - apiGroups: [argoproj.io]
+    resources: [rollouts, rollouts/status]
+    verbs: [get, list, watch, patch, update]
+  - apiGroups: [argoproj.io]
+    resources: [analysisruns]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: deployment-bot
+  namespace: {{ .Release.Namespace }}
+subjects:
+  - kind: ServiceAccount
+    name: deployment-bot
+    namespace: {{ .Release.Namespace }}
+  - kind: Group
+    name: cloudcart:deployers
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: deployment-bot
+  apiGroup: rbac.authorization.k8s.io
+---
+# --------------------------------------------------------------- monitoring
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cloudcart-monitoring-{{ .Release.Namespace }}
+rules:
+  - apiGroups: [""]
+    resources: [pods, services, endpoints, nodes, nodes/metrics, namespaces]
+    verbs: [get, list, watch]
+  - apiGroups: [discovery.k8s.io]
+    resources: [endpointslices]
+    verbs: [get, list, watch]
+  - nonResourceURLs: [/metrics]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cloudcart-monitoring-{{ .Release.Namespace }}
+subjects:
+  - kind: Group
+    name: cloudcart:monitoring
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: cloudcart-monitoring-{{ .Release.Namespace }}
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}

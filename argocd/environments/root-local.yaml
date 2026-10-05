@@ -1,0 +1,26 @@
+# Root "app of apps" for local. Apply it once after installing Argo CD:
+#   kubectl apply -f argocd/environments/root-local.yaml
+# From then on, everything is driven by Git.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cloudcart-root
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  source:
+    repoURL: http://cloudcart-git/cloudcart-devops.git
+    targetRevision: main
+    path: argocd/apps
+    helm:
+      valueFiles:
+        - values-local.yaml
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

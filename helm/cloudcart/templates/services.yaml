@@ -1,0 +1,49 @@
+{{- range $name, $_ := .Values.services }}
+{{- $svc := include "cloudcart.svc" (dict "root" $ "name" $name) | fromYaml }}
+{{- if $svc.enabled }}
+{{- $ctx := dict "root" $ "name" $name "svc" $svc }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "cloudcart.labels" $ctx | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "cloudcart.selectorLabels" $ctx | nindent 4 }}
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+{{- if eq $svc.strategy "blueGreen" }}
+---
+# Green side of blue-green: Argo Rollouts points this at the new ReplicaSet
+# so it can be tested before it receives live traffic.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}-preview
+  labels:
+    {{- include "cloudcart.labels" $ctx | nindent 4 }}
+    cloudcart.io/role: preview
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "cloudcart.selectorLabels" $ctx | nindent 4 }}
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+{{- end }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "cloudcart.labels" $ctx | nindent 4 }}
+automountServiceAccountToken: false
+{{- end }}
+{{- end }}

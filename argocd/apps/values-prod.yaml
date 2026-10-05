@@ -1,0 +1,15 @@
+# Prod runs on its own EKS cluster with its own Argo CD.
+environment: prod
+repoURL: https://github.com/your-github-user/cloudcart-devops.git
+targetRevision: main
+
+addons:
+  externalSecrets:
+    enabled: true
+  awsLoadBalancerController:
+    enabled: true
+    clusterName: cloudcart-prod
+    region: eu-west-1
+    vpcId: vpc-replace-with-output
+  reloader:
+    enabled: true

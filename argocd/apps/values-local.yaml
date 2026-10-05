@@ -1,0 +1,5 @@
+# Local kind cluster. Argo CD pulls from the in-cluster Git mirror that
+# scripts/local-cluster/local-cluster.sh serves (same flow as GitHub).
+environment: local
+repoURL: http://cloudcart-git/cloudcart-devops.git
+targetRevision: main

@@ -1,0 +1,5 @@
+apiVersion: v2
+name: secret-stores
+description: Connects External Secrets Operator to AWS Secrets Manager and syncs platform credentials.
+type: application
+version: 1.0.0

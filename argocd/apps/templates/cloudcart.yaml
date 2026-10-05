@@ -1,0 +1,51 @@
+{{- if .Values.cloudcart.enabled }}
+# The CloudCart workload. CI never deploys: it only changes the image tag in
+# helm/cloudcart/values-<env>.yaml, and this Application pulls the change.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cloudcart-{{ .Values.environment }}
+  {{- include "apps.meta" . | nindent 2 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: {{ .Values.project }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ .Values.cloudcart.namespace }}
+  source:
+    repoURL: {{ .Values.repoURL }}
+    targetRevision: {{ .Values.targetRevision }}
+    path: helm/cloudcart
+    helm:
+      releaseName: cloudcart
+      valueFiles:
+        - values-{{ .Values.environment }}.yaml
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 3
+      backoff:
+        duration: 15s
+        factor: 2
+        maxDuration: 2m
+    managedNamespaceMetadata:
+      labels:
+        app.kubernetes.io/part-of: cloudcart
+        pod-security.kubernetes.io/enforce: restricted
+        pod-security.kubernetes.io/warn: restricted
+        pod-security.kubernetes.io/audit: restricted
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+  # HPA owns the replica count; never fight it.
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers: [/spec/replicas]
+    - group: argoproj.io
+      kind: Rollout
+      jsonPointers: [/spec/replicas]
+{{- end }}

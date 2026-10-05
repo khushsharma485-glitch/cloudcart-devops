@@ -1,0 +1,53 @@
+# Shared defaults. argocd/apps/values-<env>.yaml selects what runs where.
+environment: dev
+
+# The Git repository Argo CD watches. Everything deployed comes from here.
+repoURL: https://github.com/your-github-user/cloudcart-devops.git
+targetRevision: main
+
+project: cloudcart
+
+# Chart versions are pinned; Dependabot-style bumps go through a PR.
+addons:
+  argoRollouts:
+    enabled: true
+    chart: argo-rollouts
+    repo: https://argoproj.github.io/argo-helm
+    version: 2.43.5
+  monitoring:
+    enabled: true
+    chart: kube-prometheus-stack
+    repo: https://prometheus-community.github.io/helm-charts
+    version: 91.9.0
+  loki:
+    enabled: true
+    chart: loki
+    repo: https://grafana.github.io/helm-charts
+    version: 7.3.0
+  alloy:
+    enabled: true
+    chart: alloy
+    repo: https://grafana.github.io/helm-charts
+    version: 1.13.0
+  externalSecrets:
+    enabled: false
+    chart: external-secrets
+    repo: https://charts.external-secrets.io
+    version: 2.11.0
+  awsLoadBalancerController:
+    enabled: false
+    chart: aws-load-balancer-controller
+    repo: https://aws.github.io/eks-charts
+    version: 3.5.0
+    clusterName: ""
+    vpcId: ""
+    region: ""
+  reloader:
+    enabled: false
+    chart: reloader
+    repo: https://stakater.github.io/stakater-charts
+    version: 2.2.18
+
+cloudcart:
+  enabled: true
+  namespace: cloudcart

@@ -1,0 +1,61 @@
+{{- range $name, $_ := .Values.services }}
+{{- $svc := include "cloudcart.svc" (dict "root" $ "name" $name) | fromYaml }}
+{{- if $svc.enabled }}
+{{- $ctx := dict "root" $ "name" $name "svc" $svc }}
+{{- if $svc.autoscaling.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "cloudcart.labels" $ctx | nindent 4 }}
+spec:
+  scaleTargetRef:
+    {{- if eq $svc.strategy "blueGreen" }}
+    apiVersion: argoproj.io/v1alpha1
+    kind: Rollout
+    {{- else }}
+    apiVersion: apps/v1
+    kind: Deployment
+    {{- end }}
+    name: {{ $name }}
+  minReplicas: {{ $svc.autoscaling.minReplicas }}
+  maxReplicas: {{ $svc.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $svc.autoscaling.targetCPUUtilizationPercentage }}
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 30
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60
+{{- end }}
+{{- if $svc.pdb.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "cloudcart.labels" $ctx | nindent 4 }}
+spec:
+  minAvailable: {{ $svc.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "cloudcart.selectorLabels" $ctx | nindent 6 }}
+{{- end }}
+{{- end }}
+{{- end }}

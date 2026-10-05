@@ -1,0 +1,14 @@
+CloudCart {{ .Chart.AppVersion }} deployed to namespace {{ .Release.Namespace }} ({{ .Values.global.environment }}).
+
+Check the rollout:
+  kubectl -n {{ .Release.Namespace }} get pods,svc,hpa,pdb
+{{- range $name, $_ := .Values.services }}
+{{- $svc := include "cloudcart.svc" (dict "root" $ "name" $name) | fromYaml }}
+{{- if eq $svc.strategy "blueGreen" }}
+  kubectl argo rollouts -n {{ $.Release.Namespace }} get rollout {{ $name }}
+{{- else }}
+  kubectl -n {{ $.Release.Namespace }} rollout status deployment/{{ $name }}
+{{- end }}
+{{- end }}
+
+API routes (via the Ingress): /api/users  /api/products  /api/orders

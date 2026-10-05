@@ -1,0 +1,50 @@
+# Dependabot keeps every dependency surface patched:
+# Maven libraries, Docker base images, GitHub Actions and Terraform providers.
+# Each PR goes through the full CI pipeline (tests + Trivy) before merge.
+version: 2
+updates:
+  - package-ecosystem: maven
+    directories:
+      - /services/user-service
+      - /services/product-service
+      - /services/order-service
+    schedule:
+      interval: weekly
+      day: monday
+    target-branch: develop
+    open-pull-requests-limit: 10
+    groups:
+      spring-boot:
+        patterns: ["org.springframework.boot*"]
+      test-dependencies:
+        patterns: ["org.testcontainers*", "org.junit*", "org.mockito*"]
+    labels: [dependencies, java]
+
+  - package-ecosystem: docker
+    directories:
+      - /services/user-service
+      - /services/product-service
+      - /services/order-service
+    schedule:
+      interval: weekly
+    target-branch: develop
+    labels: [dependencies, docker]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    target-branch: develop
+    groups:
+      actions:
+        patterns: ["*"]
+    labels: [dependencies, ci]
+
+  - package-ecosystem: terraform
+    directories:
+      - /terraform/environments/dev
+      - /terraform/environments/prod
+    schedule:
+      interval: weekly
+    target-branch: develop
+    labels: [dependencies, terraform]

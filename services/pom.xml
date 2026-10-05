@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Aggregator only. Each service is an independent Maven project with its own
+  parent (spring-boot-starter-parent) so it can be built, versioned and
+  containerised on its own. This file lets you build all of them at once:
+    mvn -f services/pom.xml verify
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.cloudcart</groupId>
+  <artifactId>cloudcart-services</artifactId>
+  <version>1.0.0</version>
+  <packaging>pom</packaging>
+  <modules>
+    <module>user-service</module>
+    <module>product-service</module>
+    <module>order-service</module>
+  </modules>
+</project>

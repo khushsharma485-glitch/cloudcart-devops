@@ -1,0 +1,67 @@
+# Grafana Alloy ships container logs to Loki.
+#
+#   pods (stdout, ECS JSON) -> Kubernetes API -> Alloy -> Loki -> Grafana
+#
+# loki.source.kubernetes tails logs through the API server, so Alloy needs no
+# hostPath mounts or privileged access and runs as a normal Deployment.
+controller:
+  type: deployment
+  replicas: 1
+
+alloy:
+  resources:
+    requests: { cpu: 20m, memory: 64Mi }
+    limits: { memory: 256Mi }
+  configMap:
+    content: |
+      discovery.kubernetes "pods" {
+        role = "pod"
+      }
+
+      discovery.relabel "pods" {
+        targets = discovery.kubernetes.pods.targets
+
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          target_label  = "namespace"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          target_label  = "pod"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_name"]
+          target_label  = "container"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+          target_label  = "app"
+        }
+      }
+
+      loki.source.kubernetes "pods" {
+        targets    = discovery.relabel.pods.output
+        forward_to = [loki.process.cloudcart.receiver]
+      }
+
+      // CloudCart services log ECS JSON. Promote the log level to a label so
+      // Grafana can filter with {app="order-service", level="ERROR"}.
+      loki.process "cloudcart" {
+        stage.match {
+          selector = "{namespace=\"cloudcart\"}"
+
+          stage.json {
+            expressions = { level = "\"log.level\"", logger = "\"log.logger\"" }
+          }
+          stage.labels {
+            values = { level = "" }
+          }
+        }
+        forward_to = [loki.write.default.receiver]
+      }
+
+      loki.write "default" {
+        endpoint {
+          url = "http://loki.monitoring.svc:3100/loki/api/v1/push"
+        }
+      }

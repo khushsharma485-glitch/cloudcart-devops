@@ -1,0 +1,189 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- $labels := include "cloudcart.labels" (dict "root" .) }}
+# Default deny, then explicit allows. Verified by tests/network-policy.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  labels:
+    {{- $labels | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  labels:
+    {{- $labels | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-database-egress
+  labels:
+    {{- $labels | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      cloudcart.io/tier: backend
+  policyTypes: [Egress]
+  egress:
+    - to:
+        {{- toYaml .Values.networkPolicy.databaseTo | nindent 8 }}
+      ports:
+        - { protocol: TCP, port: 5432 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-from-load-balancer
+  labels:
+    {{- $labels | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      cloudcart.io/tier: backend
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        {{- toYaml .Values.networkPolicy.ingressFrom | nindent 8 }}
+      ports:
+        - { protocol: TCP, port: 8080 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-prometheus-scrape
+  labels:
+    {{- $labels | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      cloudcart.io/tier: backend
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.monitoringNamespace }}
+      ports:
+        - { protocol: TCP, port: 8080 }
+---
+# Smoke-test pods (Helm hook and Argo Rollouts analysis) may call every service.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-smoke-tests
+  labels:
+    {{- $labels | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      cloudcart.io/tier: backend
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              cloudcart.io/role: smoke-test
+      ports:
+        - { protocol: TCP, port: 8080 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-smoke-test-egress
+  labels:
+    {{- $labels | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      cloudcart.io/role: smoke-test
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              cloudcart.io/tier: backend
+      ports:
+        - { protocol: TCP, port: 8080 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-order-to-catalog
+  labels:
+    {{- $labels | nindent 4 }}
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values: [user-service, product-service]
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: order-service
+      ports:
+        - { protocol: TCP, port: 8080 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-order-egress-to-catalog
+  labels:
+    {{- $labels | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: order-service
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values: [user-service, product-service]
+      ports:
+        - { protocol: TCP, port: 8080 }
+{{- if .Values.postgres.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-backend-to-postgres
+  labels:
+    {{- $labels | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              cloudcart.io/tier: backend
+      ports:
+        - { protocol: TCP, port: 5432 }
+{{- end }}
+{{- end }}

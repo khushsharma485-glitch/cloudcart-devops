@@ -1,0 +1,21 @@
+# Non-secret runtime configuration shared by all services.
+# Credentials are NOT here; they come from the cloudcart-db Secret.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cloudcart-config
+  labels:
+    app.kubernetes.io/part-of: cloudcart
+data:
+  # Replaced per environment: on EKS this is the RDS endpoint
+  # (terraform output rds_address).
+  DB_HOST: "cloudcart-dev.xxxxxxxxxxxx.eu-west-1.rds.amazonaws.com"
+  DB_PORT: "5432"
+  DB_NAME: "cloudcart"
+  # RDS enforces TLS (rds.force_ssl=1); require it from the client side too.
+  DB_SSL_MODE: "require"
+  DB_POOL_SIZE: "10"
+  USER_SERVICE_URL: "http://user-service"
+  PRODUCT_SERVICE_URL: "http://product-service"
+  APP_LOG_LEVEL: "INFO"
+  CHAOS_ENABLED: "false"
