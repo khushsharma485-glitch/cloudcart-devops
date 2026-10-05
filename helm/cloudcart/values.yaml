@@ -140,6 +140,9 @@ monitoring:
 blueGreen:
   # Promote automatically once the preview stack passes analysis.
   autoPromotionEnabled: true
+  # If green is not fully available within this time, the Rollout aborts
+  # and blue keeps serving (progressDeadlineAbort).
+  progressDeadlineSeconds: 600
   # Keep the old (blue) ReplicaSet running after the switch so a rollback
   # is instant (no new pods need to start).
   scaleDownDelaySeconds: 600

@@ -37,7 +37,7 @@ spec:
     matchLabels:
       {{- include "cloudcart.selectorLabels" $ctx | nindent 6 }}
   {{- if eq $svc.strategy "blueGreen" }}
-  progressDeadlineSeconds: 600
+  progressDeadlineSeconds: {{ $.Values.blueGreen.progressDeadlineSeconds }}
   # Abort (and keep blue) instead of hanging when green never gets healthy.
   progressDeadlineAbort: true
   strategy:

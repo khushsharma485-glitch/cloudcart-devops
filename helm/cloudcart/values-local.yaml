@@ -56,3 +56,9 @@ networkPolicy:
 
 postgres:
   enabled: true
+
+blueGreen:
+  # Short deadline so failed-deployment drills finish quickly.
+  progressDeadlineSeconds: 180
+  # Keep blue around for 5 minutes after a switch (instant rollback window).
+  scaleDownDelaySeconds: 300
