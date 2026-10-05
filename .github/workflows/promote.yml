@@ -1,0 +1,83 @@
+# Promote the image running in dev to prod - through a pull request.
+#
+# Prod never builds its own images: it gets the exact, already-scanned
+# image tag that passed CI, deployed to dev and passed dev's blue-green
+# analysis. The PR is the approval gate (branch protection: review required)
+# and the audit trail. Merging it is the deployment; Argo CD syncs prod.
+name: Promote to prod
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Image tag to promote (default = the tag currently in values-dev.yaml)
+        required: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+concurrency:
+  group: promote-prod
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Resolve tag
+        id: tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          tag="${INPUT_TAG:-$(yq '.global.image.tag' helm/cloudcart/values-dev.yaml)}"
+          [[ "$tag" =~ ^[0-9a-f]{40}$|^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::'$tag' is not a commit SHA or semver"; exit 1; }
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "current prod: $(yq '.global.image.tag' helm/cloudcart/values-prod.yaml)"
+
+      - name: Configure AWS credentials (OIDC)
+        if: vars.AWS_CI_ROLE_ARN != ''
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_CI_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Verify every image exists in ECR
+        if: vars.AWS_CI_ROLE_ARN != ''
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          for s in user-service product-service order-service; do
+            aws ecr describe-images --repository-name "cloudcart/$s" --image-ids imageTag="$TAG" >/dev/null
+            echo "found cloudcart/$s:$TAG"
+          done
+
+      - name: Open promotion pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          branch="promote/prod-${TAG::12}"
+          git config user.name "cloudcart-deploy-bot"
+          git config user.email "cloudcart-deploy-bot@users.noreply.github.com"
+          git switch -c "$branch"
+          yq -i '.global.image.tag = strenv(TAG)' helm/cloudcart/values-prod.yaml
+          git commit -am "deploy(prod): cloudcart ${TAG::12}"
+          git push -u origin "$branch"
+          gh pr create --base main --head "$branch" \
+            --title "deploy(prod): cloudcart ${TAG::12}" \
+            --body "Promotes image tag \`$TAG\` (all three services) from dev to prod.
+
+          Before merging, check in dev:
+          - Argo CD app \`cloudcart-dev\` is Synced and Healthy on this tag
+          - the blue-green post-promotion analysis passed
+          - no CloudCart alerts are firing
+
+          Merging deploys: Argo CD syncs prod, Argo Rollouts runs blue-green with
+          pre/post-promotion analysis and rolls back automatically on failure.
+
+          🤖 Generated with [Claude Code](https://claude.com/claude-code)"

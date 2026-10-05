@@ -1,6 +1,6 @@
 # Local development stack: PostgreSQL + the three CloudCart services.
 #
-#   docker compose up -d --build     start everything
+#   docker compose up -d --build     start everything (UI on http://localhost:3000)
 #   docker compose logs -f           follow logs
 #   docker compose down              stop (add -v to delete the database)
 #
@@ -98,6 +98,29 @@ services:
       user-service:
         condition: service_healthy
       product-service:
+        condition: service_healthy
+
+  # Minimal storefront: http://localhost:3000 (proxies /api/* to the services)
+  frontend:
+    build:
+      context: ./frontend
+    image: cloudcart/frontend:local
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    ports:
+      - "127.0.0.1:3000:8080"
+    depends_on:
+      user-service:
+        condition: service_healthy
+      product-service:
+        condition: service_healthy
+      order-service:
         condition: service_healthy
 
 volumes:

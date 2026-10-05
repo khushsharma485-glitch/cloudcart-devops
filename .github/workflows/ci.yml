@@ -116,7 +116,7 @@ jobs:
 
       - name: Lint Dockerfiles (hadolint)
         run: |
-          for f in services/*/Dockerfile; do
+          for f in services/*/Dockerfile frontend/Dockerfile; do
             echo "::group::$f"
             docker run --rm -i -v "$PWD/.hadolint.yaml:/.config/hadolint.yaml:ro" "$HADOLINT_IMAGE" < "$f"
             echo "::endgroup::"

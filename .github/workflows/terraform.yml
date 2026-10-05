@@ -1,0 +1,121 @@
+# Terraform: validate on every PR, plan when AWS access is configured,
+# apply only by manual dispatch with an environment approval.
+#
+# Optional configuration:
+#   vars.AWS_TERRAFORM_ROLE_ARN   IAM role (OIDC) with rights to plan/apply
+#   vars.TF_STATE_BUCKET          state bucket from terraform/bootstrap
+#   vars.EKS_ADMIN_CIDRS          JSON list, e.g. ["203.0.113.10/32"]
+#   GitHub environments "dev" and "prod" with required reviewers for apply.
+name: Terraform
+
+on:
+  pull_request:
+    paths: ["terraform/**", ".github/workflows/terraform.yml"]
+  push:
+    branches: [main]
+    paths: ["terraform/**"]
+  workflow_dispatch:
+    inputs:
+      environment:
+        type: choice
+        options: [dev, prod]
+        required: true
+      action:
+        type: choice
+        options: [plan, apply]
+        default: plan
+
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+
+env:
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+
+jobs:
+  validate:
+    name: fmt, validate, offline tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.16.5
+      - run: terraform -chdir=terraform fmt -check -recursive -diff
+      - name: Validate environments
+        run: |
+          for d in terraform/environments/dev terraform/environments/prod terraform/bootstrap; do
+            terraform -chdir="$d" init -backend=false
+            terraform -chdir="$d" validate
+          done
+      - name: Offline tests (mocked AWS provider)
+        run: |
+          for d in terraform terraform/modules/rds terraform/modules/ecr; do
+            terraform -chdir="$d" init -backend=false
+            terraform -chdir="$d" test
+          done
+
+  plan:
+    name: plan (${{ matrix.environment }})
+    needs: validate
+    if: vars.AWS_TERRAFORM_ROLE_ARN != '' && github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: [dev, prod]
+    defaults:
+      run:
+        working-directory: terraform/environments/${{ matrix.environment }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.16.5
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_TERRAFORM_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Init
+        run: terraform init -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" -backend-config="region=${{ vars.AWS_REGION }}"
+      - name: Plan
+        env:
+          TF_VAR_github_repository: ${{ github.repository }}
+          TF_VAR_aws_region: ${{ vars.AWS_REGION }}
+          TF_VAR_eks_public_endpoint_cidrs: ${{ vars.EKS_ADMIN_CIDRS }}
+        run: terraform plan -no-color -out=tfplan | tee plan.txt
+      - name: Summary
+        run: |
+          { echo "### terraform plan (${{ matrix.environment }})"; echo '```'; grep -E "^Plan:|No changes" plan.txt || true; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+  apply:
+    name: ${{ inputs.action }} (${{ inputs.environment }})
+    needs: validate
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    environment: ${{ inputs.environment }} # required reviewers gate the apply
+    defaults:
+      run:
+        working-directory: terraform/environments/${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.16.5
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_TERRAFORM_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Init
+        run: terraform init -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" -backend-config="region=${{ vars.AWS_REGION }}"
+      - name: Plan
+        env:
+          TF_VAR_github_repository: ${{ github.repository }}
+          TF_VAR_aws_region: ${{ vars.AWS_REGION }}
+          TF_VAR_eks_public_endpoint_cidrs: ${{ vars.EKS_ADMIN_CIDRS }}
+        run: terraform plan -no-color -out=tfplan
+      - name: Apply
+        if: inputs.action == 'apply'
+        run: terraform apply -no-color tfplan

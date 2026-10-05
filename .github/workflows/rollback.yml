@@ -1,0 +1,90 @@
+# Roll an environment back to an earlier image tag - the GitOps way.
+#
+# Automatic rollback already happens inside the cluster (Argo Rollouts
+# analysis + rollout guard). This workflow is for the decision a human
+# makes afterwards: "put the previous version back in Git" so the desired
+# state matches reality and Argo CD stops retrying the bad version.
+#   dev:  commits directly to main (same as the CI GitOps bump)
+#   prod: opens a pull request (review required by branch protection)
+name: Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to roll back
+        type: choice
+        options: [dev, prod]
+        required: true
+      tag:
+        description: Tag to roll back to (default = the tag before the current one in Git history)
+        required: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: rollback-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Find target tag
+        id: tag
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          file="helm/cloudcart/values-$ENVIRONMENT.yaml"
+          current="$(yq '.global.image.tag' "$file")"
+          target="$INPUT_TAG"
+          if [[ -z "$target" ]]; then
+            # Walk the file's history until the tag differs from the current one.
+            for c in $(git log --format=%H -- "$file"); do
+              t="$(git show "$c:$file" | yq '.global.image.tag')"
+              if [[ "$t" != "$current" ]]; then target="$t"; break; fi
+            done
+          fi
+          [[ -n "$target" && "$target" != "$current" ]] || { echo "::error::no earlier tag found"; exit 1; }
+          echo "rolling $ENVIRONMENT back: $current -> $target"
+          {
+            echo "file=$file"
+            echo "current=$current"
+            echo "target=$target"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Write rollback to Git
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ENVIRONMENT: ${{ inputs.environment }}
+          FILE: ${{ steps.tag.outputs.file }}
+          CURRENT: ${{ steps.tag.outputs.current }}
+          TARGET: ${{ steps.tag.outputs.target }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          git config user.name "cloudcart-deploy-bot"
+          git config user.email "cloudcart-deploy-bot@users.noreply.github.com"
+          msg="rollback($ENVIRONMENT): cloudcart ${CURRENT::12} -> ${TARGET::12}"
+          if [[ "$ENVIRONMENT" == dev ]]; then
+            TAG="$TARGET" yq -i '.global.image.tag = strenv(TAG)' "$FILE"
+            git commit -am "$msg"
+            git push origin HEAD:main
+          else
+            branch="rollback/prod-${TARGET::12}"
+            git switch -c "$branch"
+            TAG="$TARGET" yq -i '.global.image.tag = strenv(TAG)' "$FILE"
+            git commit -am "$msg"
+            git push -u origin "$branch"
+            gh pr create --base main --head "$branch" --title "$msg" \
+              --body "Requested by @$ACTOR. Restores image tag \`$TARGET\` in prod. See docs/incidents for the runbook.
+
+          🤖 Generated with [Claude Code](https://claude.com/claude-code)"
+          fi
