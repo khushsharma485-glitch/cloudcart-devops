@@ -38,7 +38,7 @@ services:
   order-service:
     strategy: blueGreen
     image:
-      tag: "2.0.0"
+      tag: "2.2.0"
 
 ingress:
   className: traefik
