@@ -9,7 +9,12 @@
 # Requires kubectl access, curl and Python 3. Uses temporary port-forwards.
 set -uo pipefail
 
-PY="$(command -v python3 || command -v python)"
+# First interpreter that actually runs (on Windows "python3" can be a Store stub).
+PY=""
+for candidate in python3 python; do
+  if "$candidate" -c 'import sys' >/dev/null 2>&1; then PY="$candidate"; break; fi
+done
+[[ -n "$PY" ]] || { echo "Python 3 is required" >&2; exit 2; }
 NS_MON="${NS_MON:-monitoring}"
 NS_APP="${NS_APP:-cloudcart}"
 failures=0
