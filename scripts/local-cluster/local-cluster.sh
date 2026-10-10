@@ -105,7 +105,7 @@ db_secret() {
     log "creating secret cloudcart-db with a random password (never written to disk)"
     kubectl -n "$NS" create secret generic cloudcart-db \
       --from-literal=username=cloudcart \
-      --from-literal=password="$(random_secret 32)"
+      --from-literal=password="$(random_secret 32 2>/dev/null)"
   fi
 }
 
@@ -123,6 +123,17 @@ app() {
 smoke() {
   # Only /api/* is exposed through the ingress, so health is checked via
   # port-forward and the business flow via the ingress.
+  # The ingress learns new endpoints a few seconds after a rollout finishes;
+  # wait until every route is actually served.
+  local path code i
+  for path in /api/users /api/products /api/orders/user/0; do
+    for i in $(seq 1 60); do
+      code="$(curl -s -o /dev/null -m 5 -w '%{http_code}' "http://localhost:8080$path" || true)"
+      [[ "$code" == 200 ]] && break
+      [[ $i -eq 60 ]] && { echo "ingress never served $path (last HTTP $code)" >&2; return 1; }
+      sleep 2
+    done
+  done
   BASE_URL=http://localhost:8080 HEALTH_URLS="" "$ROOT/tests/smoke/smoke-test.sh"
 }
 
