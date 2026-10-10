@@ -82,8 +82,10 @@ addons() {
     --set ingressClass.enabled=true \
     --set ingressClass.isDefaultClass=false \
     --set providers.kubernetesIngress.publishedService.enabled=false \
-    --set 'additionalArguments={--providers.kubernetesingress.ingressendpoint.ip=127.0.0.1}' \
-    --wait --timeout 10m
+    --set 'additionalArguments={--providers.kubernetesingress.ingressendpoint.ip=127.0.0.1}'
+  # Wait for the Deployment itself rather than `helm --wait`, which on some
+  # Helm versions never completes for this chart (seen on GitHub runners).
+  kubectl -n traefik rollout status deployment/traefik --timeout=600s
 }
 
 images() {
