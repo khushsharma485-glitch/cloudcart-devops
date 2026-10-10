@@ -15,12 +15,12 @@ RUN --mount=type=cache,target=/root/.m2 mvn -B -q dependency:go-offline
 COPY src ./src
 RUN --mount=type=cache,target=/root/.m2 mvn -B -q package -DskipTests
 
-FROM eclipse-temurin:17-jre-alpine AS extract
+FROM eclipse-temurin:25-jre-alpine AS extract
 WORKDIR /extract
 COPY --from=build /workspace/target/app.jar app.jar
 RUN java -Djarmode=tools -jar app.jar extract --layers --launcher --destination layers
 
-FROM eclipse-temurin:17-jre-alpine AS runtime
+FROM eclipse-temurin:25-jre-alpine AS runtime
 ARG APP_VERSION=dev
 LABEL org.opencontainers.image.title="cloudcart" \
       org.opencontainers.image.source="https://github.com/khushsharma485-glitch/cloudcart-devops" \
