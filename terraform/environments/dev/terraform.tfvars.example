@@ -1,6 +1,6 @@
 # Copy to terraform.tfvars (git-ignored) and adjust.
 aws_region        = "eu-west-1"
-github_repository = "your-github-user/cloudcart-devops"
+github_repository = "khushsharma485-glitch/cloudcart-devops"
 
 # Required: your public IP(s) allowed to reach the Kubernetes API.
 # Find yours with: curl -s https://checkip.amazonaws.com

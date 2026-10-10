@@ -2,7 +2,7 @@
 environment: dev
 
 # The Git repository Argo CD watches. Everything deployed comes from here.
-repoURL: https://github.com/your-github-user/cloudcart-devops.git
+repoURL: https://github.com/khushsharma485-glitch/cloudcart-devops.git
 targetRevision: main
 
 project: cloudcart

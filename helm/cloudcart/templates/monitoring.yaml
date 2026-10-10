@@ -59,7 +59,7 @@ spec:
           annotations:
             summary: "{{ "{{ $labels.job }}" }} is down"
             description: "Prometheus cannot scrape any {{ "{{ $labels.job }}" }} pod for 2 minutes. The service is unavailable."
-            runbook_url: https://github.com/cloudcart/cloudcart-devops/blob/main/docs/incidents/README.md
+            runbook_url: https://github.com/khushsharma485-glitch/cloudcart-devops/blob/main/docs/incidents/README.md
 
         - alert: CloudCartPodNotReady
           expr: sum by (pod) (kube_pod_status_ready{namespace="{{ $ns }}", condition="true"} == 0) > 0

@@ -23,7 +23,7 @@ RUN java -Djarmode=tools -jar app.jar extract --layers --launcher --destination 
 FROM eclipse-temurin:17-jre-alpine AS runtime
 ARG APP_VERSION=dev
 LABEL org.opencontainers.image.title="cloudcart" \
-      org.opencontainers.image.source="https://github.com/cloudcart/cloudcart-devops" \
+      org.opencontainers.image.source="https://github.com/khushsharma485-glitch/cloudcart-devops" \
       org.opencontainers.image.version="${APP_VERSION}"
 
 # Pick up security fixes released after the base image was built, then

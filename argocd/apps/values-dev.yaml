@@ -1,5 +1,5 @@
 environment: dev
-repoURL: https://github.com/your-github-user/cloudcart-devops.git
+repoURL: https://github.com/khushsharma485-glitch/cloudcart-devops.git
 targetRevision: main
 
 addons:
