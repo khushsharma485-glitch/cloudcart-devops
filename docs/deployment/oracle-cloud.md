@@ -63,10 +63,9 @@ on the cluster, and applies `argocd/environments/root-oci.yaml`. From then on:
 
 ## Notes
 
-- **Images must be public** for k3s to pull them without credentials. After
-  the first CI run on `main`, open your GitHub profile -> *Packages* ->
-  each `cloudcart/*` package -> *Package settings* -> *Change visibility* ->
-  Public.
+- **Images are public**: packages pushed by this public repository's CI inherit
+  its visibility, so k3s pulls them without credentials (verified with an
+  anonymous pull of all three images).
 - **Idle reclamation:** Oracle may reclaim Always Free compute that stays
   almost idle for 7 days. CloudCart with monitoring normally keeps the server
   busy enough; if it is reclaimed, `terraform apply` + bootstrap rebuild it.

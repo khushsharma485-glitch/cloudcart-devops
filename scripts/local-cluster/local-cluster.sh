@@ -67,7 +67,7 @@ addons() {
   # kind kubelets use self-signed certs; EKS installs metrics-server as a managed add-on instead.
   helm upgrade --install metrics-server metrics-server/metrics-server \
     --version "$METRICS_SERVER_CHART" -n kube-system \
-    --set 'args={--kubelet-insecure-tls}' --wait
+    --set 'args={--kubelet-insecure-tls}' --wait --timeout 10m
 
   # ingressendpoint.ip publishes an address in the Ingress status (like the
   # ALB hostname on EKS) so Argo CD can report the Ingress as Healthy.
@@ -83,7 +83,7 @@ addons() {
     --set ingressClass.isDefaultClass=false \
     --set providers.kubernetesIngress.publishedService.enabled=false \
     --set 'additionalArguments={--providers.kubernetesingress.ingressendpoint.ip=127.0.0.1}' \
-    --wait
+    --wait --timeout 10m
 }
 
 images() {
