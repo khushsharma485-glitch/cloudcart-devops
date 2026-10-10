@@ -19,7 +19,7 @@
 
   <properties>
     <java.version>17</java.version>
-    <jacoco.version>0.8.13</jacoco.version>
+    <jacoco.version>0.8.15</jacoco.version>
     <!-- mvn verify -DskipUTs runs only integration tests (used by CI) -->
     <skipUTs>false</skipUTs>
     <!--
