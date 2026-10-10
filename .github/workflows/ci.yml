@@ -187,7 +187,9 @@ jobs:
       matrix:
         service: [user-service, product-service, order-service]
     env:
-      PUBLISH: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) }}
+      # Publish only from main / version tags, and only once AWS is configured
+      # (vars.AWS_CI_ROLE_ARN). Before that, CI still builds and scans images.
+      PUBLISH: ${{ vars.AWS_CI_ROLE_ARN != '' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) }}
       LOCAL_TAG: cloudcart/${{ matrix.service }}:${{ github.sha }}
     outputs:
       tag: ${{ github.sha }}
@@ -262,7 +264,7 @@ jobs:
   gitops-bump:
     name: Promote to dev (GitOps)
     needs: image
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: vars.AWS_CI_ROLE_ARN != '' && github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
