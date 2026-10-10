@@ -7,7 +7,7 @@ global:
   image:
     registry: ghcr.io/khushsharma485-glitch
     # Updated by CI (gitops-bump job) after every successful main build.
-    tag: "2873c9f47b675c18514a34d561a6b6562ae0a81c"
+    tag: "22976391effcbd2880c3f73612da521ccc615111"
 config:
   dbHost: postgres
   dbSslMode: disable # in-cluster PostgreSQL, traffic never leaves the node
