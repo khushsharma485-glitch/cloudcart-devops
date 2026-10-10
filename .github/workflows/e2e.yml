@@ -1,0 +1,56 @@
+# End-to-end on a real Kubernetes cluster, for free: a 3-node kind cluster
+# with Calico on the GitHub runner, CloudCart deployed from the plain
+# manifests, then the smoke test through the ingress and the NetworkPolicy
+# enforcement test. Public repositories get these runner minutes free.
+name: E2E (Kubernetes)
+
+on:
+  push:
+    branches: [main, develop]
+    paths-ignore: ["docs/**", "**.md"]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  KIND_VERSION: v0.33.0
+
+jobs:
+  kind:
+    name: kind + Calico + CloudCart
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install kind
+        run: |
+          curl -sSfLo /usr/local/bin/kind "https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-linux-amd64"
+          chmod +x /usr/local/bin/kind
+          kind version; kubectl version --client; helm version --short
+
+      - name: Cluster, add-ons, images and app
+        run: scripts/local-cluster/local-cluster.sh up
+
+      - name: Smoke test through the ingress
+        run: scripts/local-cluster/local-cluster.sh smoke
+
+      - name: NetworkPolicy enforcement test
+        run: tests/network-policy/netpol-test.sh
+
+      - name: Diagnostics on failure
+        if: failure()
+        run: |
+          kubectl get nodes -o wide || true
+          kubectl get pods -A -o wide || true
+          kubectl -n cloudcart get events --sort-by=.lastTimestamp | tail -40 || true
+          for d in user-service product-service order-service; do
+            echo "--- $d"; kubectl -n cloudcart logs "deploy/$d" --tail=60 || true
+          done

@@ -22,7 +22,7 @@ K8S_VERSION=1.36.0
 # CRD schemas from datreeio/CRDs-catalog, pinned to a commit: an upstream
 # update on 2026-10-08 broke the ClusterSecretStore schema for kubeconform.
 CRDS_CATALOG_REF=fd90051867733c60d32d16450556e9cd18459aef
-ENVS=(local dev prod)
+ENVS=(local dev prod oci)
 
 # Docker on Windows (Git Bash) needs native paths and no MSYS path rewriting.
 host_path() { if command -v cygpath >/dev/null; then cygpath -w "$1"; else echo "$1"; fi; }
@@ -50,7 +50,7 @@ step() { printf '\n=== %s\n' "$*"; }
 step "Terraform: format"
 terraform -chdir=terraform fmt -check -recursive -diff
 
-for d in terraform/environments/dev terraform/environments/prod terraform/bootstrap; do
+for d in terraform/environments/dev terraform/environments/prod terraform/bootstrap terraform/oci; do
   step "Terraform: validate $d"
   (cd "$d" && terraform init -backend=false -input=false -no-color >/dev/null && terraform validate -no-color)
 done

@@ -1,0 +1,70 @@
+# Oracle Cloud Always Free: one Ampere A1 server (2 OCPU / 12 GB, arm64)
+# running k3s. Public images from GitHub Container Registry, PostgreSQL
+# in-cluster on k3s' local-path storage, Traefik (built into k3s) as ingress.
+
+global:
+  environment: oci
+  image:
+    registry: ghcr.io/khushsharma485-glitch
+    # Updated by CI (gitops-bump job) after every successful main build.
+    tag: "replace-with-first-ci-build-sha"
+
+config:
+  dbHost: postgres
+  dbSslMode: disable # in-cluster PostgreSQL, traffic never leaves the node
+  logLevel: INFO
+  # This endpoint is public on the Internet: no fault injection here.
+  chaosEnabled: false
+
+database:
+  # Created once by scripts/oci/bootstrap.sh with a random password.
+  secretName: cloudcart-db
+
+reloader:
+  enabled: false
+
+serviceDefaults:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 320Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+  autoscaling:
+    minReplicas: 1
+    maxReplicas: 2
+  pdb:
+    minAvailable: 0
+
+services:
+  order-service:
+    strategy: blueGreen
+
+ingress:
+  className: traefik
+  annotations: {}
+
+networkPolicy:
+  # k3s runs Traefik in kube-system.
+  ingressFrom:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: traefik
+  databaseTo:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: postgres
+
+postgres:
+  enabled: true
+  storage: 5Gi
+
+blueGreen:
+  progressDeadlineSeconds: 300
+  # One node: keep the previous version only briefly to save memory.
+  scaleDownDelaySeconds: 120

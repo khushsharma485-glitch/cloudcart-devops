@@ -182,6 +182,7 @@ jobs:
       contents: read
       id-token: write        # OIDC token for AWS - no long-lived keys
       security-events: write
+      packages: write        # push to GitHub Container Registry
     strategy:
       fail-fast: true
       matrix:
@@ -190,6 +191,7 @@ jobs:
       # Publish only from main / version tags, and only once AWS is configured
       # (vars.AWS_CI_ROLE_ARN). Before that, CI still builds and scans images.
       PUBLISH: ${{ vars.AWS_CI_ROLE_ARN != '' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) }}
+      PUBLISH_GHCR: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) }}
       LOCAL_TAG: cloudcart/${{ matrix.service }}:${{ github.sha }}
     outputs:
       tag: ${{ github.sha }}
@@ -261,10 +263,36 @@ jobs:
             echo "::notice::pushed $repo:$t"
           done
 
+      # ---- GitHub Container Registry (free): multi-arch for Oracle Cloud A1 ----
+      - name: Set up QEMU (arm64 runtime stage)
+        if: env.PUBLISH_GHCR == 'true'
+        uses: docker/setup-qemu-action@v4
+
+      - name: Login to GHCR
+        if: env.PUBLISH_GHCR == 'true'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push multi-arch image to GHCR (linux/amd64 + linux/arm64)
+        if: env.PUBLISH_GHCR == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: services/${{ matrix.service }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/cloudcart/${{ matrix.service }}:${{ github.sha }}
+          build-args: APP_VERSION=${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+          provenance: false
+
   gitops-bump:
-    name: Promote to dev (GitOps)
+    name: Promote (GitOps)
     needs: image
-    if: vars.AWS_CI_ROLE_ARN != '' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -277,12 +305,17 @@ jobs:
         with:
           ref: main
 
-      - name: Set dev image tag
+      - name: Set image tags
         env:
           TAG: ${{ github.sha }}
+          AWS_CONFIGURED: ${{ vars.AWS_CI_ROLE_ARN != '' }}
         run: |
-          # yq is preinstalled on GitHub-hosted Ubuntu runners
-          yq -i '.global.image.tag = strenv(TAG)' helm/cloudcart/values-dev.yaml
+          # yq is preinstalled on GitHub-hosted Ubuntu runners.
+          # Oracle Cloud (GHCR images) always; AWS dev (ECR images) once configured.
+          yq -i '.global.image.tag = strenv(TAG)' helm/cloudcart/values-oci.yaml
+          if [[ "$AWS_CONFIGURED" == true ]]; then
+            yq -i '.global.image.tag = strenv(TAG)' helm/cloudcart/values-dev.yaml
+          fi
           git diff --stat
 
       - name: Commit and push
@@ -291,11 +324,11 @@ jobs:
         run: |
           git config user.name "cloudcart-deploy-bot"
           git config user.email "cloudcart-deploy-bot@users.noreply.github.com"
-          git add helm/cloudcart/values-dev.yaml
+          git add helm/cloudcart/values-oci.yaml helm/cloudcart/values-dev.yaml
           if git diff --cached --quiet; then
-            echo "dev already at $TAG"; exit 0
+            echo "already at $TAG"; exit 0
           fi
           # Pushes made with GITHUB_TOKEN do not trigger new workflow runs,
           # so this cannot loop. Argo CD picks the change up from Git.
-          git commit -m "deploy(dev): cloudcart ${TAG::12}"
+          git commit -m "deploy: cloudcart ${TAG::12}"
           git push origin HEAD:main

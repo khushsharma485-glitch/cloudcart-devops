@@ -1,0 +1,6 @@
+# Oracle Cloud Always Free (k3s on one Ampere A1 server).
+# No AWS add-ons: k3s provides ingress (Traefik), metrics-server and storage,
+# and the database password is created by scripts/oci/bootstrap.sh.
+environment: oci
+repoURL: https://github.com/khushsharma485-glitch/cloudcart-devops.git
+targetRevision: main

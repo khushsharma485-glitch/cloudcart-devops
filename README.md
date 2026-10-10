@@ -10,6 +10,12 @@ developer → GitHub → CI (tests, scans) → image → ECR → Terraform-built
           → GitOps (Argo CD) → blue-green release → monitoring → alerting → incident → rollback
 ```
 
+**Free cloud deployment:** CloudCart also runs at $0 on an Oracle Cloud
+Always Free ARM server with k3s, deployed by Terraform and Argo CD from this
+repository ([guide](docs/deployment/oracle-cloud.md)). Every push is also
+deployed to a throwaway Kubernetes cluster in GitHub Actions and tested
+([e2e workflow](.github/workflows/e2e.yml)).
+
 Everything in this repository was built incrementally and **tested by running
 it**. The full platform ran on a local 3-node Kubernetes cluster, where
 releases, automated rollbacks and seven incident drills were executed and

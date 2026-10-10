@@ -1,0 +1,31 @@
+#cloud-config
+# First-boot setup of the CloudCart k3s server (Ubuntu 24.04, arm64).
+package_update: true
+package_upgrade: true
+packages:
+  - curl
+  - unattended-upgrades
+
+write_files:
+  # k3s configuration. The API server listens on all interfaces, but the
+  # OCI security list only admits SSH, so it is reachable through an SSH
+  # tunnel only (scripts/oci/bootstrap.sh).
+  - path: /etc/rancher/k3s/config.yaml
+    content: |
+      write-kubeconfig-mode: "0600"
+      tls-san:
+        - 127.0.0.1
+      # Network policies are enforced by k3s' embedded kube-router (on by default).
+      kubelet-arg:
+        - "system-reserved=cpu=200m,memory=512Mi"
+        - "kube-reserved=cpu=200m,memory=512Mi"
+        - "eviction-hard=memory.available<300Mi"
+
+runcmd:
+  # Oracle's Ubuntu images ship iptables rules that reject everything except
+  # SSH. Open the ingress ports (the OCI security list still filters them).
+  - iptables -I INPUT 6 -p tcp --dport 80 -j ACCEPT
+  - iptables -I INPUT 6 -p tcp --dport 443 -j ACCEPT
+  - netfilter-persistent save
+  - curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="${k3s_version}" sh -s - server
+  - systemctl enable --now unattended-upgrades

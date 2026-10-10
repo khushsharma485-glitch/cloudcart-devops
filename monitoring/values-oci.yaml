@@ -1,0 +1,34 @@
+# Oracle Cloud Always Free (single k3s node): small, no persistent volumes
+# (only the database gets one), alerts go to the webhook logger receiver.
+prometheus:
+  prometheusSpec:
+    retention: 2d
+    resources:
+      requests: { cpu: 100m, memory: 300Mi }
+      limits: { memory: 768Mi }
+
+alertmanager:
+  config:
+    global:
+      resolve_timeout: 5m
+    route:
+      receiver: webhook-logger
+      group_by: [alertname, namespace, job]
+      group_wait: 30s
+      group_interval: 2m
+      repeat_interval: 1h
+      routes:
+        - receiver: "null"
+          matchers: ['alertname = "Watchdog"']
+        - receiver: "null"
+          matchers: ['alertname = "InfoInhibitor"']
+    receivers:
+      - name: "null"
+      - name: webhook-logger
+        webhook_configs:
+          - url: http://alert-webhook-logger.monitoring.svc:8080/alerts
+            send_resolved: true
+    inhibit_rules:
+      - source_matchers: ['severity = "critical"']
+        target_matchers: ['severity = "warning"']
+        equal: [alertname, namespace, job]

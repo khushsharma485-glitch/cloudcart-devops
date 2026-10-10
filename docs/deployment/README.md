@@ -7,6 +7,7 @@ Three ways to run CloudCart, from fastest to most complete.
 | [Docker Compose](#1-docker-compose) | 3 services + PostgreSQL + storefront | Docker |
 | [Local Kubernetes (kind)](#2-local-kubernetes-kind) | the full platform: Calico, Argo CD, Argo Rollouts, Prometheus, Grafana, Loki, Alertmanager, network policies, blue-green | Docker (8 GB RAM), kind, kubectl, Helm |
 | [AWS](#3-aws-eks) | EKS + RDS + ECR built by Terraform, deployed by Argo CD | AWS account, Terraform, a GitHub repository |
+| [Oracle Cloud, free](oracle-cloud.md) | k3s on an Always Free ARM server, deployed by Argo CD, $0 | Oracle Cloud account, Terraform |
 
 ## 1. Docker Compose
 
