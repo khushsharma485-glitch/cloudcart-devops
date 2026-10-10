@@ -32,8 +32,8 @@ jobs:
 
       - name: Install kind
         run: |
-          curl -sSfLo /usr/local/bin/kind "https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-linux-amd64"
-          chmod +x /usr/local/bin/kind
+          curl -sSfLo kind "https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-linux-amd64"
+          sudo install -m 0755 kind /usr/local/bin/kind && rm kind
           kind version; kubectl version --client; helm version --short
 
       - name: Cluster, add-ons, images and app
