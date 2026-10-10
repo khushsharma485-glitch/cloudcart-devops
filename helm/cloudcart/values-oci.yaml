@@ -7,22 +7,18 @@ global:
   image:
     registry: ghcr.io/khushsharma485-glitch
     # Updated by CI (gitops-bump job) after every successful main build.
-    tag: "replace-with-first-ci-build-sha"
-
+    tag: "dd82b822254779fe6fe10ab24e3aff76707756c7"
 config:
   dbHost: postgres
   dbSslMode: disable # in-cluster PostgreSQL, traffic never leaves the node
   logLevel: INFO
   # This endpoint is public on the Internet: no fault injection here.
   chaosEnabled: false
-
 database:
   # Created once by scripts/oci/bootstrap.sh with a random password.
   secretName: cloudcart-db
-
 reloader:
   enabled: false
-
 serviceDefaults:
   replicas: 1
   resources:
@@ -37,15 +33,12 @@ serviceDefaults:
     maxReplicas: 2
   pdb:
     minAvailable: 0
-
 services:
   order-service:
     strategy: blueGreen
-
 ingress:
   className: traefik
   annotations: {}
-
 networkPolicy:
   # k3s runs Traefik in kube-system.
   ingressFrom:
@@ -59,11 +52,9 @@ networkPolicy:
     - podSelector:
         matchLabels:
           app.kubernetes.io/name: postgres
-
 postgres:
   enabled: true
   storage: 5Gi
-
 blueGreen:
   progressDeadlineSeconds: 300
   # One node: keep the previous version only briefly to save memory.
