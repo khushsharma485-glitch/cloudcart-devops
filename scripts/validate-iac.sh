@@ -19,6 +19,9 @@ TERRAFORM_IMAGE=hashicorp/terraform:1.16.5
 HELM_IMAGE=alpine/helm:4.3.0
 KUBECONFORM_IMAGE=ghcr.io/yannh/kubeconform:v0.8.0
 K8S_VERSION=1.36.0
+# CRD schemas from datreeio/CRDs-catalog, pinned to a commit: an upstream
+# update on 2026-10-08 broke the ClusterSecretStore schema for kubeconform.
+CRDS_CATALOG_REF=fd90051867733c60d32d16450556e9cd18459aef
 ENVS=(local dev prod)
 
 # Docker on Windows (Git Bash) needs native paths and no MSYS path rewriting.
@@ -81,9 +84,15 @@ done
 step "kubeconform: strict schema validation (Kubernetes $K8S_VERSION + CRDs)"
 files=()
 for f in "$OUT"/*.yaml; do files+=("$KC_DIR/$(basename "$f")"); done
-kubeconform -strict -summary -kubernetes-version "$K8S_VERSION" \
-  -schema-location default \
-  -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
-  "${files[@]}"
+# Schemas are downloaded from the network; retry so one transient fetch
+# failure does not fail the pipeline (a real schema error fails every attempt).
+for attempt in 1 2 3; do
+  if kubeconform -strict -summary -kubernetes-version "$K8S_VERSION" -schema-location default -schema-location "https://raw.githubusercontent.com/datreeio/CRDs-catalog/${CRDS_CATALOG_REF}/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json" "${files[@]}"; then
+    break
+  fi
+  [[ $attempt -eq 3 ]] && { echo "kubeconform failed 3 times" >&2; exit 1; }
+  echo "kubeconform attempt $attempt failed, retrying in 10s" >&2
+  sleep 10
+done
 
 step "All infrastructure validation passed"
