@@ -32,7 +32,7 @@ eclipse-temurin:17-jre-alpine  ->  runtime: JRE only, layers copied in order
 
 - **hadolint** lints every Dockerfile in CI (`.hadolint.yaml`).
 - **Trivy** scans every image in CI and fails on CRITICAL vulnerabilities. Locally, `make scan` fails on HIGH or CRITICAL.
-- The first scan found a CRITICAL Tomcat CVE and HIGH CVEs in Jackson and the PostgreSQL driver in the versions shipped with Spring Boot 3.5.16. The poms override those versions until a Boot release catches up; Dependabot raises that PR.
+- Trivy findings are fixed at the source. The first scan (Spring Boot 3.5.16) found a CRITICAL Tomcat CVE and HIGH CVEs in Jackson and pgjdbc. Later, CI blocked CVE-2026-47884 (CRITICAL, Spring Framework 6.2) which has no 6.2 fix because Boot 3.5 is out of open-source support, so the services moved to Spring Boot 4.1.1. The poms still pin Tomcat 11.0.26 and Jackson 3.1.7 above the Boot 4.1.1 defaults; Dependabot raises the PR that lets those pins go.
 
 ## Tags
 

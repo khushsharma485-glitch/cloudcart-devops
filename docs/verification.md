@@ -4,7 +4,8 @@ This project follows one rule: **do not claim something works unless it was
 run.** This page lists every claim and the evidence behind it.
 
 Environment: Windows 11, Docker Desktop 29.2 (8 CPUs, 8 GB VM), Java 17
-(Corretto), Maven 3.9.16, kind 0.33 (Kubernetes 1.37 nodes), Helm 4.3,
+(Corretto), Maven 3.9.16, Spring Boot 4.1.1 (services re-verified after the
+migration from 3.5.16 on 2026-10-10), kind 0.33 (Kubernetes 1.37 nodes), Helm 4.3,
 Terraform 1.16.5 (container), Trivy 0.75, 2026-10-05/06.
 
 ## Verified by running it

@@ -91,7 +91,7 @@ Details, design decisions and request flow: [docs/architecture](docs/architectur
 
 | Layer | Tools |
 |---|---|
-| Application | Java 17, Spring Boot 3.5 (Web, Data JPA, Validation, Actuator), Flyway, PostgreSQL 16, Micrometer, Maven, JUnit 5, Mockito, Testcontainers |
+| Application | Java 17, Spring Boot 4.1 / Spring Framework 7 (Web MVC, Data JPA, Validation, Actuator), Flyway, PostgreSQL 16, Micrometer, Maven, JUnit 5, Mockito, Testcontainers |
 | Containers | Docker multi-stage builds, Docker Compose, Eclipse Temurin JRE (Alpine), nginx-unprivileged |
 | CI | GitHub Actions, Trivy, SonarQube, hadolint, actionlint, Dependabot, JaCoCo |
 | Infrastructure | Terraform 1.16 (AWS provider 6), S3 state with native locking, `terraform test` with a mocked provider |
@@ -333,6 +333,7 @@ and fix: [docs/troubleshooting](docs/troubleshooting/README.md).
 - **Read the source when a tool surprises you.** Argo Rollouts did not abort a crash-looping preview; `rollout/sync.go` showed why, and a 60-line guard fixed it.
 - **GitOps has its own failure modes.** A sync waiting for health blocked its own revert, so set sync timeouts. Run game days through Git, because self-heal undoes `kubectl` changes.
 - **No traffic means no signal.** A canary analysis passed because nothing was calling the new version.
+- **Frameworks expire.** Days after the first push, CI blocked a new CRITICAL CVE in Spring Framework 6.2. Spring Boot 3.5 had left open-source support on 2026-06-30, so no patch would come; the fix was a migration to Spring Boot 4.1, not an ignore rule.
 - **Liveness must not depend on the database.** That one choice turned a full database outage into zero restarts and an 8-second recovery.
 - **Blue-green needs 2x capacity.** An HPA at 4 plus a preview at 4 took a node down.
 

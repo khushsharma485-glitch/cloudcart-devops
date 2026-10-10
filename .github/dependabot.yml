@@ -29,6 +29,11 @@ updates:
       interval: weekly
     target-branch: develop
     labels: [dependencies, docker]
+    # A new Java major (e.g. temurin 17 -> 25) is a platform decision with its
+    # own testing, not a routine bump.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /

@@ -7,7 +7,7 @@ Defense in depth, from source code to running pod. Each control below lists
 
 | Control | Where | Verified |
 |---|---|---|
-| Dependency CVE gate | CI `image` job: Trivy fails on CRITICAL (`--ignore-unfixed`); HIGH and CRITICAL go to the GitHub Security tab (SARIF) | First scan found 3 CRITICAL CVEs in Tomcat 10.1.55 (e.g. CVE-2026-65182) and HIGH CVEs in Jackson 2.21.4 and pgjdbc 42.7.11. Pinned patched versions in the poms; rescan: 0 HIGH / 0 CRITICAL in all 3 images. |
+| Dependency CVE gate | CI `image` job: Trivy fails on CRITICAL (`--ignore-unfixed`); HIGH and CRITICAL go to the GitHub Security tab (SARIF) | First scan found 3 CRITICAL Tomcat CVEs and HIGH CVEs in Jackson and pgjdbc (fixed by pins). After publishing, CI blocked CVE-2026-47884 / CVE-2026-47890 (CRITICAL, Spring Framework 6.2.19): Boot 3.5 is out of OSS support, so the services were migrated to Spring Boot 4.1.1 (Spring 7.0.9), with Tomcat 11.0.26 and Jackson 3.1.7 pinned. Rescan: 0 HIGH / 0 CRITICAL. |
 | Repository scan (deps, secrets, IaC misconfig) | CI `static-analysis` job: `trivy fs --scanners vuln,secret,misconfig` | Passes. Found CRITICAL AWS-0040/0041 (EKS API open to 0.0.0.0/0), fixed (see below). |
 | Dependency updates | `.github/dependabot.yml`: Maven, Docker base images, Actions, Terraform providers, weekly | config only |
 | Static analysis / quality gate | SonarQube (SonarCloud or self-hosted) with `sonar.qualitygate.wait=true`; JaCoCo coverage from unit + integration tests | runs when `SONAR_TOKEN` is set; not exercised in this environment |
